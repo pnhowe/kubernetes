@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- t3kton_v1_contractor.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,31 @@
+# permissions for end users to edit contractors.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: contractor-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: kubernetes
+    app.kubernetes.io/part-of: kubernetes
+    app.kubernetes.io/managed-by: kustomize
+  name: contractor-editor-role
+rules:
+- apiGroups:
+  - t3kton.t3kton.com
+  resources:
+  - contractors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - t3kton.t3kton.com
+  resources:
+  - contractors/status
+  verbs:
+  - get
