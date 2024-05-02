@@ -6,14 +6,13 @@ metadata:
 webhooks:
 - admissionReviewVersions:
   - v1
-  - v1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-contractor-t3kton-com-v1
+      path: /validate-contractor-t3kton-com-v1-structure
   failurePolicy: Fail
-  name: structure.contractor.t3kton.com
+  name: vstructure.kb.io
   rules:
   - apiGroups:
     - contractor.t3kton.com
@@ -22,6 +21,7 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
+    - DELETE
     resources:
-    - structure
+    - structures
   sideEffects: None

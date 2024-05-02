@@ -18,9 +18,12 @@ package v1
 
 import (
 	"errors"
+	"fmt"
+	"regexp"
 )
 
-// validateHost validates Structure resource for creation.
+var config_name_regex = regexp.MustCompile(`^[<>\-~]?[a-zA-Z0-9][a-zA-Z0-9_\-]*(:[a-zA-Z0-9]+)?$`)
+
 func (s *Structure) validateStructure() []error {
 	var errs []error
 
@@ -37,8 +40,6 @@ func (s *Structure) validateStructure() []error {
 	return errs
 }
 
-// validateChanges validates Structure resource on changes
-// but also covers the validations of creation.
 func (s *Structure) validateChanges(old *Structure) []error {
 	var errs []error
 
@@ -66,17 +67,19 @@ func (s *Structure) validateChanges(old *Structure) []error {
 }
 
 func validateBluePrint(blueprint string) error {
-	// if err != nil {
-	// 	return fmt.Errorf("blueprint %s is invalid: %w", imageURL, err)
-	// }
+	if blueprint != "test-structure-base" {
+		return fmt.Errorf("invalid blueprint name")
+	}
 
 	return nil
 }
 
 func validateConfigurationValues(configurationValues map[string]ConfigValue) error {
-	// if err != nil {
-	// 	return fmt.Errorf("blueprint %s is invalid: %w", imageURL, err)
-	// }
+	for name := range configurationValues {
+		if !config_name_regex.MatchString(name) {
+			return fmt.Errorf("invalid configuration value name '%s'", name)
+		}
+	}
 
 	return nil
 }
