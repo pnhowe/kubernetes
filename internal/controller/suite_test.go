@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	t3ktonv1 "github.com/t3kton/kubernetes/api/v1"
+	contractorv1 "t3kton.com/api/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -72,7 +72,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = t3ktonv1.AddToScheme(scheme.Scheme)
+	err = contractorv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme

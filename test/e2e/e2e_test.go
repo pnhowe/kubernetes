@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/t3kton/kubernetes/test/utils"
+	"t3kton.com/test/utils"
 )
 
 const namespace = "kubernetes-system"

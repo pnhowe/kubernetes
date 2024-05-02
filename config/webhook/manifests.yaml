@@ -1,0 +1,27 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-contractor-t3kton-com-v1
+  failurePolicy: Fail
+  name: structure.contractor.t3kton.com
+  rules:
+  - apiGroups:
+    - contractor.t3kton.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - structure
+  sideEffects: None

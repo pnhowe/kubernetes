@@ -1,27 +1,31 @@
-# permissions for end users to view contractors.
+# permissions for end users to edit structures.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: contractor-viewer-role
+    app.kubernetes.io/instance: structure-editor-role
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: kubernetes
     app.kubernetes.io/part-of: kubernetes
     app.kubernetes.io/managed-by: kustomize
-  name: contractor-viewer-role
+  name: structure-editor-role
 rules:
 - apiGroups:
-  - t3kton.t3kton.com
+  - contractor.t3kton.com
   resources:
-  - contractors
+  - structures
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
-  - t3kton.t3kton.com
+  - contractor.t3kton.com
   resources:
-  - contractors/status
+  - structures/status
   verbs:
   - get

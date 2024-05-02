@@ -6,15 +6,15 @@ domain: t3kton.com
 layout:
 - go.kubebuilder.io/v4
 projectName: kubernetes
-repo: github.com/t3kton/kubernetes
+repo: t3kton.com
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
   domain: t3kton.com
-  group: t3kton
-  kind: Contractor
-  path: github.com/t3kton/kubernetes/api/v1
+  group: contractor
+  kind: Structure
+  path: t3kton.com/api/v1
   version: v1
 version: "3"

@@ -27,10 +27,10 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	t3ktonv1 "github.com/t3kton/kubernetes/api/v1"
+	contractorv1 "t3kton.com/api/v1"
 )
 
-var _ = Describe("Contractor Controller", func() {
+var _ = Describe("Structure Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -40,13 +40,13 @@ var _ = Describe("Contractor Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		contractor := &t3ktonv1.Contractor{}
+		structure := &contractorv1.Structure{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Contractor")
-			err := k8sClient.Get(ctx, typeNamespacedName, contractor)
+			By("creating the custom resource for the Kind Structure")
+			err := k8sClient.Get(ctx, typeNamespacedName, structure)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &t3ktonv1.Contractor{
+				resource := &contractorv1.Structure{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,16 +59,16 @@ var _ = Describe("Contractor Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &t3ktonv1.Contractor{}
+			resource := &contractorv1.Structure{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance Contractor")
+			By("Cleanup the specific resource instance Structure")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &ContractorReconciler{
+			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
