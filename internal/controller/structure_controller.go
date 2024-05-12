@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -29,11 +28,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"t3kton.com/pkg/contractor"
 
+	cclient "github.com/t3kton/contractor_goclient"
 	contractorv1 "t3kton.com/api/v1"
 
 	"github.com/go-logr/logr"
-	contractor "github.com/t3kton/contractor_goclient"
 )
 
 // StructureReconciler reconciles a Structure object
@@ -59,21 +59,19 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	sloger := slog.New(logr.ToSlogHandler(log))
+	if (structure.Spec.State == "") || (structure.Spec.BluePrint == "") {
+		log.Info("Structure is not fully defined")
+		return ctrl.Result{RequeueAfter: time.Second * 30}, nil // wait for the State and BluePrint to be defined
+	}
 
-	client, err := contractor.NewContractor(ctx, sloger, "http://127.0.0.1:8888", "", "root", "root")
+	client := contractor.GetClient(ctx)
+
+	cStructure, err := updateStructureStatus(ctx, log, client, &structure)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	defer client.Logout(ctx)
-
-	cStructure, err := updateStructureStatus(ctx, &structure, client, log)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	err = updateJobStatus(ctx, cStructure, &structure, client, log)
+	err = updateJobStatus(ctx, log, client, cStructure, &structure)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -84,7 +82,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Wait for the job to be cleared up and the state to be set
-	if (structure.Status.Job == nil) && (structure.Status.State == structure.Spec.State) {
+	if (structure.Status.Job == nil) && (structure.Status.State == structure.Spec.State) && (structure.Status.BluePrint == structure.Spec.BluePrint) {
 		log.Info("Reconciled Structure")
 		return ctrl.Result{}, nil
 	}
@@ -112,9 +110,6 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *StructureReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 8}).
-		// Owns(&v1apps.Deployment{}).
-		// Owns(&v1core.ConfigMap{}).
-		// Owns(&v1core.Service{}).
 		For(&contractorv1.Structure{}).
 		Complete(r)
 }
@@ -128,7 +123,7 @@ func (r *StructureReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // 	return r.Update(ctx, obj)
 // }
 
-func updateStructureStatus(ctx context.Context, structure *contractorv1.Structure, client *contractor.Contractor, log logr.Logger) (*contractor.BuildingStructure, error) {
+func updateStructureStatus(ctx context.Context, log logr.Logger, client *cclient.Contractor, structure *contractorv1.Structure) (*cclient.BuildingStructure, error) {
 	log.Info("Getting Structure")
 	cStructure, err := client.BuildingStructureGet(ctx, structure.Spec.ID)
 	if err != nil {
@@ -140,7 +135,10 @@ func updateStructureStatus(ctx context.Context, structure *contractorv1.Structur
 	structure.Status.BluePrint = strings.Split(*cStructure.Blueprint, ":")[1]
 	structure.Status.Foundation = *cStructure.Foundation
 
-	//structure.Status.ConfigurationValues = &configValues
+	structure.Status.ConfigValues = make(map[string]contractor.ConfigValue, len(*cStructure.ConfigValues))
+	for key, val := range *cStructure.ConfigValues {
+		structure.Status.ConfigValues[key] = contractor.FromInterface(val)
+	}
 
 	log.Info("Getting Foundation")
 	cFoundation, err := client.BuildingFoundationGetURI(ctx, structure.Status.Foundation)
@@ -154,7 +152,7 @@ func updateStructureStatus(ctx context.Context, structure *contractorv1.Structur
 	return cStructure, nil
 }
 
-func updateJobStatus(ctx context.Context, cStructure *contractor.BuildingStructure, structure *contractorv1.Structure, client *contractor.Contractor, log logr.Logger) error {
+func updateJobStatus(ctx context.Context, log logr.Logger, client *cclient.Contractor, cStructure *cclient.BuildingStructure, structure *contractorv1.Structure) error {
 	log.Info("Getting Structure Job")
 	jobURI, err := cStructure.CallGetJob(ctx)
 	if err != nil {

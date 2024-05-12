@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"t3kton.com/pkg/contractor"
 
 	contractorv1 "t3kton.com/api/v1"
 	"t3kton.com/internal/controller"
@@ -57,6 +59,11 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var contractorHost string
+	var contractorProxy string
+	var contractorUsername string
+	var contractorPassword string
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -66,6 +73,11 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&contractorHost, "contractor-host", "http://contractor", "Contractor's hostname.")
+	flag.StringVar(&contractorProxy, "contractor-proxy", "", "Proxy to go through to get to the contractor host.")
+	flag.StringVar(&contractorUsername, "contractor-username", "k8s", "Contractor Username.")
+	flag.StringVar(&contractorPassword, "contractor-password", "k8s", "Contractor Password.")
+
 	opts := zap.Options{
 		Development: true,
 	}
@@ -88,6 +100,13 @@ func main() {
 	tlsOpts := []func(*tls.Config){}
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
+	}
+
+	ctx := context.TODO()
+	err := contractor.SetupFactory(ctx, contractorHost, contractorUsername, contractorPassword, contractorProxy)
+	if err != nil {
+		setupLog.Error(err, "unable to connect to contractor")
+		os.Exit(1)
 	}
 
 	webhookServer := webhook.NewServer(webhook.Options{

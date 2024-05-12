@@ -17,34 +17,52 @@ limitations under the License.
 package v1
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
+
+	client "github.com/t3kton/contractor_goclient"
+	"t3kton.com/pkg/contractor"
 )
 
 var config_name_regex = regexp.MustCompile(`^[<>\-~]?[a-zA-Z0-9][a-zA-Z0-9_\-]*(:[a-zA-Z0-9]+)?$`)
 
-func (s *Structure) validateStructure() []error {
+func (s *Structure) validateStructure(ctx context.Context, client *client.Contractor) []error {
 	var errs []error
 
+	_, err := client.BuildingStructureGet(ctx, s.Spec.ID)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("structure not found"))
+	}
+
 	if s.Spec.BluePrint != "" {
-		if err := validateBluePrint(s.Spec.BluePrint); err != nil {
-			errs = append(errs, err)
+		_, err := client.BlueprintStructureBluePrintGet(ctx, s.Spec.BluePrint)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("blueprint not found"))
+		}
+
+		if s.Spec.BluePrint != "test-structure-base" {
+			errs = append(errs, fmt.Errorf("invalid blueprint"))
 		}
 	}
 
-	if err := validateConfigurationValues(s.Spec.ConfigurationValues); err != nil {
+	if err := validateConfigValues(s.Spec.ConfigValues); err != nil {
 		errs = append(errs, err)
 	}
 
 	return errs
 }
 
-func (s *Structure) validateChanges(old *Structure) []error {
+func (s *Structure) validateChanges(ctx context.Context, client *client.Contractor, old *Structure) []error {
 	var errs []error
 
-	if err := s.validateStructure(); err != nil {
+	if err := s.validateStructure(ctx, client); err != nil {
 		errs = append(errs, err...)
+	}
+
+	if s.Spec.ID != old.Spec.ID {
+		errs = append(errs, errors.New("can not change the ID"))
 	}
 
 	if s.Spec.BluePrint != old.Spec.BluePrint &&
@@ -66,15 +84,7 @@ func (s *Structure) validateChanges(old *Structure) []error {
 	return errs
 }
 
-func validateBluePrint(blueprint string) error {
-	if blueprint != "test-structure-base" {
-		return fmt.Errorf("invalid blueprint name")
-	}
-
-	return nil
-}
-
-func validateConfigurationValues(configurationValues map[string]ConfigValue) error {
+func validateConfigValues(configurationValues map[string]contractor.ConfigValue) error {
 	for name := range configurationValues {
 		if !config_name_regex.MatchString(name) {
 			return fmt.Errorf("invalid configuration value name '%s'", name)

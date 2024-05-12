@@ -18,6 +18,7 @@ package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"t3kton.com/pkg/contractor"
 )
 
 // StructureSpec defines the desired state of Structure
@@ -26,25 +27,24 @@ type StructureSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	ID int `json:"id,omitempty"`
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=planned;built
 	State string `json:"state,omitempty"`
-	// +kubebuilder:validation:Required
-	BluePrint string `json:"blueprint,omitempty"`
-	// TODO: also support lists and
 	// +kubebuilder:validation:Optional
-	ConfigurationValues map[string]ConfigValue `json:"configurationValues,omitempty"`
+	BluePrint string `json:"blueprint,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConfigValues map[string]contractor.ConfigValue `json:"configValues,omitempty"`
 }
 
 // StructureStatus defines the observed state of the Structure
 type StructureStatus struct {
-	State               string                 `json:"state,omitempty"`
-	BluePrint           string                 `json:"blueprint,omitempty"`
-	ConfigurationValues map[string]ConfigValue `json:"configurationValues,omitempty"`
-	Job                 *JobStatus             `json:"job,omitempty"`
-	Hostname            string                 `json:"hostname,omitempty"`
-	Foundation          string                 `json:"foundation,omitempty"`
-	FoundationBluePrint string                 `json:"foundationBluePrint,omitempty"`
+	State               string                            `json:"state,omitempty"`
+	BluePrint           string                            `json:"blueprint,omitempty"`
+	ConfigValues        map[string]contractor.ConfigValue `json:"configValues,omitempty"`
+	Job                 *JobStatus                        `json:"job,omitempty"`
+	Hostname            string                            `json:"hostname,omitempty"`
+	Foundation          string                            `json:"foundation,omitempty"`
+	FoundationBluePrint string                            `json:"foundationBluePrint,omitempty"`
 }
 
 // JobStatus defines the observed state of the Job

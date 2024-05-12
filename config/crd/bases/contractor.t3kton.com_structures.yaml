@@ -60,10 +60,39 @@ spec:
             properties:
               blueprint:
                 type: string
-              configurationValues:
+              configValues:
                 additionalProperties:
+                  description: |-
+                    _k8s:openapi-gen=true
+                    _kubebuilder:validation:Type=object
+                    _kubebuilder:validation:Format=int-or-str
+                    _kubebuilder:validation:Schemaless
+                    _kubebuilder:pruning:PreserveUnknownFields
+                  properties:
+                    array:
+                      items:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        x-kubernetes-int-or-string: true
+                      type: array
+                    float:
+                      type: number
+                    int:
+                      format: int64
+                      type: integer
+                    map:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        x-kubernetes-int-or-string: true
+                      type: object
+                    string:
+                      type: string
+                    type:
+                      type: string
                   type: object
-                description: 'TODO: also support lists and'
                 type: object
               id:
                 minimum: 1
@@ -82,8 +111,38 @@ spec:
             properties:
               blueprint:
                 type: string
-              configurationValues:
+              configValues:
                 additionalProperties:
+                  description: |-
+                    _k8s:openapi-gen=true
+                    _kubebuilder:validation:Type=object
+                    _kubebuilder:validation:Format=int-or-str
+                    _kubebuilder:validation:Schemaless
+                    _kubebuilder:pruning:PreserveUnknownFields
+                  properties:
+                    array:
+                      items:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        x-kubernetes-int-or-string: true
+                      type: array
+                    float:
+                      type: number
+                    int:
+                      format: int64
+                      type: integer
+                    map:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        x-kubernetes-int-or-string: true
+                      type: object
+                    string:
+                      type: string
+                    type:
+                      type: string
                   type: object
                 type: object
               foundation:

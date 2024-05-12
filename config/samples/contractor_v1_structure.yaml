@@ -10,17 +10,19 @@ metadata:
   name: structure-sample
 spec:
   id: 3
-  state: built
-  blueprint: test-structure-base
-  configurationValues:
-    bmc_version: "2.3"
-    bios_version: "4.5"
-    some_key: some_value
-    some_number: 5
-    a_list: [5, 2, "asdf"]
-    a_map: 
-      key1: value1
-      key2: 2
-      key3: [1, 2, "sdf"]
-
+  # state: built
+  # blueprint: test-structure-base
+  # configValues:
+  #   bmc_version:
+  #     type: string
+  #     string: "2.3"
+  #   bios_version:
+  #     type: string
+  #     string: "4.5"
+  #   some_number: 
+  #     type: int
+  #     int: 5
+  #   some_array:
+  #     type: array
+  #     array: [ 1, 2, "sdf" ]
   

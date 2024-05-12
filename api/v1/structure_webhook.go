@@ -17,14 +17,16 @@ limitations under the License.
 package v1
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	kerrors "k8s.io/apimachinery/pkg/util/errors"
+	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"t3kton.com/pkg/contractor"
 )
 
 // log is for logging in this package.
@@ -37,11 +39,43 @@ func (r *Structure) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,groups=contractor.t3kton.com,resources=structures,verbs=create,versions=v1,name=vstructure.kb.io,sideEffects=None,admissionReviewVersions=v1
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
+var _ webhook.Defaulter = &Structure{}
+
+// Default implements webhook.Defaulter so a webhook will be registered for the type
+func (r *Structure) Default() {
+	structurelog.Info("default", "name", r.Name)
+
+	ctx := context.TODO()
+	client := contractor.GetClient(ctx)
+
+	structurelog.Info("Getting Structure")
+	structure, err := client.BuildingStructureGet(ctx, r.Spec.ID)
+	if err != nil { // Hopfully the validation logic will catch the fact this dosen't exist
+		return
+	}
+
+	// State, Blueprint, configvalues should come from curent contractor state if they are not set
+	if r.Spec.State == "" {
+		structurelog.Info("Setting State", *structure.State)
+		r.Spec.State = *structure.State
+	}
+
+	if r.Spec.BluePrint == "" {
+		structurelog.Info("Setting Blueprint", *structure.Blueprint)
+		r.Spec.BluePrint = *structure.Blueprint
+	}
+
+	if r.Spec.ConfigValues == nil {
+		structurelog.Info("Setting Config Values", *structure.ConfigValues)
+		r.Spec.ConfigValues = make(map[string]contractor.ConfigValue, len(*structure.ConfigValues))
+		for key, val := range *structure.ConfigValues {
+			r.Spec.ConfigValues[key] = contractor.FromInterface(val)
+		}
+	}
+}
+
 //+kubebuilder:webhook:path=/validate-contractor-t3kton-com-v1-structure,mutating=false,failurePolicy=fail,sideEffects=None,groups=contractor.t3kton.com,resources=structures,verbs=create;update;delete,versions=v1,name=vstructure.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &Structure{}
@@ -50,20 +84,25 @@ var _ webhook.Validator = &Structure{}
 func (r *Structure) ValidateCreate() (admission.Warnings, error) {
 	structurelog.Info("validate create", "name", r.Name)
 
-	return nil, kerrors.NewAggregate(r.validateStructure())
+	ctx := context.TODO()
+	client := contractor.GetClient(ctx)
 
+	return nil, apierrors.NewAggregate(r.validateStructure(ctx, client))
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *Structure) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	structurelog.Info("validate update", "name", r.Name)
 
+	ctx := context.TODO()
+	client := contractor.GetClient(ctx)
+
 	structure, casted := old.(*Structure)
 	if !casted {
 		structurelog.Error(fmt.Errorf("old object conversion error for %s/%d", r.Namespace, r.Spec.ID), "validate update error")
 		return nil, nil
 	}
-	return nil, kerrors.NewAggregate(r.validateChanges(structure))
+	return nil, apierrors.NewAggregate(r.validateChanges(ctx, client, structure))
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
