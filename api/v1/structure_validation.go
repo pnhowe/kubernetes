@@ -40,9 +40,7 @@ func (s *Structure) validateStructure(ctx context.Context, client *client.Contra
 		_, err := client.BlueprintStructureBluePrintGet(ctx, s.Spec.BluePrint)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("blueprint not found"))
-		}
-
-		if s.Spec.BluePrint != "test-structure-base" {
+		} else if s.Spec.BluePrint != "test-structure-base" {
 			errs = append(errs, fmt.Errorf("invalid blueprint"))
 		}
 	}

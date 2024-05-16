@@ -19,6 +19,7 @@ package v1
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
@@ -28,6 +29,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"t3kton.com/pkg/contractor"
 )
+
+func extractID(value string) string {
+	if value == "" {
+		return ""
+	}
+	return strings.Split(value, ":")[1]
+}
 
 // log is for logging in this package.
 var structurelog = logf.Log.WithName("structure-resource")
@@ -58,17 +66,17 @@ func (r *Structure) Default() {
 
 	// State, Blueprint, configvalues should come from curent contractor state if they are not set
 	if r.Spec.State == "" {
-		structurelog.Info("Setting State", *structure.State)
+		structurelog.Info("setting", "state", *structure.State)
 		r.Spec.State = *structure.State
 	}
 
 	if r.Spec.BluePrint == "" {
-		structurelog.Info("Setting Blueprint", *structure.Blueprint)
-		r.Spec.BluePrint = *structure.Blueprint
+		structurelog.Info("setting", "blueprint", extractID(*structure.Blueprint))
+		r.Spec.BluePrint = extractID(*structure.Blueprint)
 	}
 
 	if r.Spec.ConfigValues == nil {
-		structurelog.Info("Setting Config Values", *structure.ConfigValues)
+		structurelog.Info("setting", "config values", *structure.ConfigValues)
 		r.Spec.ConfigValues = make(map[string]contractor.ConfigValue, len(*structure.ConfigValues))
 		for key, val := range *structure.ConfigValues {
 			r.Spec.ConfigValues[key] = contractor.FromInterface(val)
