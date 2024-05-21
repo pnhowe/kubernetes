@@ -51,26 +51,26 @@ type StructureReconciler struct {
 func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("Reconciling Structure")
-
+	fmt.Println("A")
 	var structure contractorv1.Structure
-
+	fmt.Println("B")
 	err := r.Get(ctx, req.NamespacedName, &structure)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
+	fmt.Println("C")
 	if (structure.Spec.State == "") || (structure.Spec.BluePrint == "") {
 		log.Info("Structure is not fully defined")
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil // wait for the State and BluePrint to be defined
 	}
-
+	fmt.Println("D")
 	client := contractor.GetClient(ctx)
-
+	fmt.Println("E")
 	cStructure, err := updateStructureStatus(ctx, log, client, &structure)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
+	fmt.Println("F")
 	err = updateJobStatus(ctx, log, client, cStructure, &structure)
 	if err != nil {
 		return ctrl.Result{}, err

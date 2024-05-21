@@ -64,3 +64,14 @@ func GetClient(ctx context.Context) *contractor.Contractor {
 
 	return factory.client
 }
+
+// SetupTestingFactory sets up the factory for testing
+func SetupTestingFactory(ctx context.Context) error {
+	client := &contractor.Contractor{}
+
+	factory = &clientFactory{username: "", password: ""}
+	factory.client = client
+	factory.tokenExpires = time.Now().Add(time.Hour * 24) // no set of tests should take longer than a day, right?
+
+	return nil
+}

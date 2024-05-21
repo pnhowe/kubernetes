@@ -63,15 +63,15 @@ func (s *Structure) validateChanges(ctx context.Context, client *client.Contract
 		errs = append(errs, errors.New("can not change the ID"))
 	}
 
-	if s.Spec.BluePrint != old.Spec.BluePrint &&
-		(old.Status.State != "planned" || s.Status.State != "planned" ||
-			old.Spec.State != "planned" || s.Spec.State != "planned") {
-		errs = append(errs, errors.New("can not change the BluePrint while not in 'Planned' State"))
-	}
+	if s.Spec.BluePrint != old.Spec.BluePrint {
+		if old.Status.State != "planned" || s.Status.State != "planned" ||
+			old.Spec.State != "planned" || s.Spec.State != "planned" {
+			errs = append(errs, errors.New("can not change the BluePrint while not in 'Planned' State"))
+		}
 
-	if s.Spec.BluePrint != old.Spec.BluePrint &&
-		(old.Status.Job != nil || s.Status.Job != nil) {
-		errs = append(errs, errors.New("can not change the BluePrint while there is a Job"))
+		if old.Status.Job != nil || s.Status.Job != nil {
+			errs = append(errs, errors.New("can not change the BluePrint while there is a Job"))
+		}
 	}
 
 	if s.Spec.State != old.Spec.State &&

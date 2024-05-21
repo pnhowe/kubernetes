@@ -22,6 +22,14 @@ import (
 
 var _ = Describe("Structure Webhook", func() {
 
+	Context("When creating Structure under Defaulting Webhook", func() {
+		It("Should fill in the default value if a required field is empty", func() {
+
+			By("Filling blank State and BluePrint")
+
+		})
+	})
+
 	Context("When creating Structure under Validating Webhook", func() {
 		It("Should deny if a required field is empty", func() {
 
