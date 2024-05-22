@@ -18,23 +18,30 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
+	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	contractorv1 "t3kton.com/api/v1"
+	"t3kton.com/pkg/contractor"
+	"t3kton.com/pkg/contractor/test_contractor"
 )
 
 var _ = Describe("Structure Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
-			resourceName  = "test-resource"
-			namespaceName = "t3kton-contractor"
+			resourceName  = "test-structure"
+			namespaceName = "default"
 		)
+
+		var mockCtrl *gomock.Controller
+		var mockCINP *test_contractor.MockCInPClient
 
 		ctx := context.Background()
 
@@ -42,46 +49,62 @@ var _ = Describe("Structure Controller", func() {
 			Name:      resourceName,
 			Namespace: namespaceName,
 		}
-		structure := &contractorv1.Structure{}
 
 		BeforeEach(func() {
+			mockCtrl = gomock.NewController(GinkgoT())
+			mockCINP = test_contractor.NewMockCInPClient(mockCtrl)
+		})
+
+		It("should successfully reconcile from planned to built", func() {
+			By("Setup Contractor Client Factory")
+			Expect(contractor.SetupTestingFactory(ctx, mockCINP)).NotTo(HaveOccurred())
+
 			By("creating the custom resource for the Kind Structure")
-			err := k8sClient.Get(ctx, typeNamespacedName, structure)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &contractorv1.Structure{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			structure := &contractorv1.Structure{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespaceName,
+				},
+				Spec: contractorv1.StructureSpec{},
 			}
-		})
+			Expect(k8sClient.Create(ctx, structure)).To(Succeed())
+			defer func() {
+				By("Cleanup the specific resource instance Structure")
+				Expect(k8sClient.Delete(ctx, structure)).To(Succeed())
+			}()
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &contractorv1.Structure{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance Structure")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-
-		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			// controllerReconciler := &StructureReconciler{
-			// 	Client: k8sClient,
-			// 	Scheme: k8sClient.Scheme(),
-			// }
+			controllerReconciler := &StructureReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
 
-			// _, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			// 	NamespacedName: typeNamespacedName,
-			// })
-			// Expect(err).NotTo(HaveOccurred())
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(MatchError("ID Not Specified"))
+			Expect(result.IsZero()).To(Equal(true))
 
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			structure.Spec = contractorv1.StructureSpec{ID: 42}
+			Expect(k8sClient.Update(ctx, structure)).NotTo(HaveOccurred())
+
+			result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsZero()).To(Equal(false))
+			Expect(result.RequeueAfter).To(Equal(time.Second * 30))
+
+			structure.Spec.State = "planned"
+			structure.Spec.BluePrint = "test-structure-base"
+			Expect(k8sClient.Update(ctx, structure)).NotTo(HaveOccurred())
+
+			result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsZero()).To(Equal(true))
+
 		})
 
 	})

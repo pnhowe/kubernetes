@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	cinp "github.com/cinp/go"
 	"github.com/go-logr/logr"
 	contractor "github.com/t3kton/contractor_goclient"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -66,8 +67,9 @@ func GetClient(ctx context.Context) *contractor.Contractor {
 }
 
 // SetupTestingFactory sets up the factory for testing
-func SetupTestingFactory(ctx context.Context) error {
+func SetupTestingFactory(ctx context.Context, cinp cinp.CInPClient) error {
 	client := &contractor.Contractor{}
+	client.OverrideCINPClient(cinp)
 
 	factory = &clientFactory{username: "", password: ""}
 	factory.client = client
