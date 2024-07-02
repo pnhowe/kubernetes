@@ -54,13 +54,25 @@ var _ webhook.Defaulter = &Structure{}
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *Structure) Default() {
 	structurelog.Info("default", "name", r.Name)
+	if r.Spec.ID == 0 {
+		// if the ID is not set, just bail
+		structurelog.Info("ID not set")
+		return
+	}
+
+	if r.Spec.State != "" && r.Spec.BluePrint != "" && r.Spec.ConfigValues != nil {
+		structurelog.Info("No Defaulting needed")
+		return
+	}
 
 	ctx := context.TODO()
 	client := contractor.GetClient(ctx)
 
 	structurelog.Info("Getting Structure")
 	structure, err := client.BuildingStructureGet(ctx, r.Spec.ID)
-	if err != nil { // Hopfully the validation logic will catch the fact this dosen't exist
+	if err != nil {
+		// Hopfully the validation logic will catch the fact this dosen't exist
+		structurelog.Error(err, "unable to get structure", "structure", r.Spec.ID)
 		return
 	}
 
@@ -77,9 +89,9 @@ func (r *Structure) Default() {
 
 	if r.Spec.ConfigValues == nil {
 		structurelog.Info("setting", "config values", *structure.ConfigValues)
-		r.Spec.ConfigValues = make(map[string]contractor.ConfigValue, len(*structure.ConfigValues))
+		r.Spec.ConfigValues = make(map[string]ConfigValue, len(*structure.ConfigValues))
 		for key, val := range *structure.ConfigValues {
-			r.Spec.ConfigValues[key] = contractor.FromInterface(val)
+			r.Spec.ConfigValues[key] = FromInterface(val)
 		}
 	}
 }

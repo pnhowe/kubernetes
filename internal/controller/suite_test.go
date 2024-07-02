@@ -99,14 +99,16 @@ var _ = BeforeSuite(func() {
 	err = (&StructureReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
+		Log:    ctrl.Log.WithName("StructureReconciler"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	go func() {
-		defer GinkgoRecover()
-		err = k8sManager.Start(ctx)
-		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
-	}()
+	// our tests want each call to reconcile to be one shot, so we need to not start the manager
+	// go func() {
+	// 	defer GinkgoRecover()
+	// 	err = k8sManager.Start(ctx)
+	// 	Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+	// }()
 
 })
 

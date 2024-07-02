@@ -7,8 +7,8 @@ import (
 
 	cinp "github.com/cinp/go"
 	"github.com/go-logr/logr"
-	contractor "github.com/t3kton/contractor_goclient"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	contractorClient "github.com/t3kton/contractor_goclient"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 const tokenLifeTime = time.Minute * 10
@@ -17,7 +17,7 @@ const tokenLifeTime = time.Minute * 10
 type clientFactory struct {
 	username     string
 	password     string
-	client       *contractor.Contractor
+	client       *contractorClient.Contractor
 	tokenExpires time.Time
 }
 
@@ -25,10 +25,10 @@ var factory *clientFactory = nil
 
 // SetupFactory sets up and checks the connection and authencation information
 func SetupFactory(ctx context.Context, hostname string, username string, password string, proxy string) error {
-	log := log.FromContext(ctx).WithName("contractor")
+	log := ctrl.Log.WithName("contractor")
 	sloger := slog.New(logr.ToSlogHandler(log))
 
-	client, err := contractor.NewContractor(ctx, sloger, hostname, proxy, username, password)
+	client, err := contractorClient.NewContractor(ctx, sloger, hostname, proxy, username, password)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func CleanupFactory(ctx context.Context) {
 }
 
 // GetClient returns a authencated Contractor client
-func GetClient(ctx context.Context) *contractor.Contractor {
+func GetClient(ctx context.Context) *contractorClient.Contractor {
 	if factory == nil || factory.client == nil {
 		panic("Contractor Client Factory Not Setup")
 	}
@@ -68,7 +68,7 @@ func GetClient(ctx context.Context) *contractor.Contractor {
 
 // SetupTestingFactory sets up the factory for testing
 func SetupTestingFactory(ctx context.Context, cinp cinp.CInPClient) error {
-	client := &contractor.Contractor{}
+	client := &contractorClient.Contractor{}
 	client.OverrideCINPClient(cinp)
 
 	factory = &clientFactory{username: "", password: ""}

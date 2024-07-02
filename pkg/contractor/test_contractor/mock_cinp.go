@@ -157,6 +157,20 @@ func (mr *MockCInPClientMockRecorder) Get(arg0, arg1 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockCInPClient)(nil).Get), arg0, arg1)
 }
 
+// GetURI mocks base method.
+func (m *MockCInPClient) GetURI() *cinp.URI {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetURI")
+	ret0, _ := ret[0].(*cinp.URI)
+	return ret0
+}
+
+// GetURI indicates an expected call of GetURI.
+func (mr *MockCInPClientMockRecorder) GetURI() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetURI", reflect.TypeOf((*MockCInPClient)(nil).GetURI))
+}
+
 // List mocks base method.
 func (m *MockCInPClient) List(arg0 context.Context, arg1, arg2 string, arg3 map[string]any, arg4, arg5 int) ([]string, int, int, int, error) {
 	m.ctrl.T.Helper()
@@ -187,6 +201,32 @@ func (m *MockCInPClient) ListIds(arg0 context.Context, arg1, arg2 string, arg3 m
 func (mr *MockCInPClientMockRecorder) ListIds(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIds", reflect.TypeOf((*MockCInPClient)(nil).ListIds), arg0, arg1, arg2, arg3, arg4)
+}
+
+// ListObjects mocks base method.
+func (m *MockCInPClient) ListObjects(arg0 context.Context, arg1 string, arg2 reflect.Type, arg3 string, arg4 map[string]any, arg5 int) <-chan *cinp.Object {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListObjects", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret0, _ := ret[0].(<-chan *cinp.Object)
+	return ret0
+}
+
+// ListObjects indicates an expected call of ListObjects.
+func (mr *MockCInPClientMockRecorder) ListObjects(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjects", reflect.TypeOf((*MockCInPClient)(nil).ListObjects), arg0, arg1, arg2, arg3, arg4, arg5)
+}
+
+// RegisterType mocks base method.
+func (m *MockCInPClient) RegisterType(arg0 string, arg1 reflect.Type) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterType", arg0, arg1)
+}
+
+// RegisterType indicates an expected call of RegisterType.
+func (mr *MockCInPClientMockRecorder) RegisterType(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterType", reflect.TypeOf((*MockCInPClient)(nil).RegisterType), arg0, arg1)
 }
 
 // SetHeader mocks base method.

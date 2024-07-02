@@ -63,43 +63,80 @@ spec:
               configValues:
                 additionalProperties:
                   description: |-
-                    _k8s:openapi-gen=true
-                    _kubebuilder:validation:Type=object
-                    _kubebuilder:validation:Format=int-or-str
-                    _kubebuilder:validation:Schemaless
-                    _kubebuilder:pruning:PreserveUnknownFields
+                    keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
+                    and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
-                    array:
-                      items:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        x-kubernetes-int-or-string: true
-                      type: array
-                    float:
+                    arrayVal:
+                      x-kubernetes-preserve-unknown-fields: true
+                    floatVal:
                       type: number
-                    int:
+                    intVal:
                       format: int64
                       type: integer
-                    map:
-                      additionalProperties:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        x-kubernetes-int-or-string: true
-                      type: object
-                    string:
+                    mapVal:
+                      x-kubernetes-preserve-unknown-fields: true
+                    strVal:
                       type: string
                     type:
                       type: string
                   type: object
                 type: object
+              consumerRef:
+                description: ConsumerRef can be used to store information about something
+                  that is using this structure.
+                properties:
+                  apiVersion:
+                    description: API version of the referent.
+                    type: string
+                  fieldPath:
+                    description: |-
+                      If referring to a piece of an object instead of an entire object, this string
+                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                      For example, if the object reference is to a container within a pod, this would take on a value like:
+                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                      the event) or if no container name is specified "spec.containers[2]" (container with
+                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                      referencing a part of an object.
+                      TODO: this design is not final and this field is subject to change in the future.
+                    type: string
+                  kind:
+                    description: |-
+                      Kind of the referent.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                    type: string
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                    type: string
+                  resourceVersion:
+                    description: |-
+                      Specific resourceVersion to which this reference is made, if any.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                    type: string
+                  uid:
+                    description: |-
+                      UID of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               id:
                 minimum: 1
                 type: integer
                 x-kubernetes-validations:
                 - message: Value is immutable
                   rule: self == oldSelf
+              other:
+                anyOf:
+                - type: integer
+                - type: string
+                x-kubernetes-int-or-string: true
               state:
                 enum:
                 - planned
@@ -114,32 +151,19 @@ spec:
               configValues:
                 additionalProperties:
                   description: |-
-                    _k8s:openapi-gen=true
-                    _kubebuilder:validation:Type=object
-                    _kubebuilder:validation:Format=int-or-str
-                    _kubebuilder:validation:Schemaless
-                    _kubebuilder:pruning:PreserveUnknownFields
+                    keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
+                    and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
-                    array:
-                      items:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        x-kubernetes-int-or-string: true
-                      type: array
-                    float:
+                    arrayVal:
+                      x-kubernetes-preserve-unknown-fields: true
+                    floatVal:
                       type: number
-                    int:
+                    intVal:
                       format: int64
                       type: integer
-                    map:
-                      additionalProperties:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        x-kubernetes-int-or-string: true
-                      type: object
-                    string:
+                    mapVal:
+                      x-kubernetes-preserve-unknown-fields: true
+                    strVal:
                       type: string
                     type:
                       type: string
@@ -156,6 +180,10 @@ spec:
                 properties:
                   canstart:
                     type: string
+                  created:
+                    type: string
+                  lastupdated:
+                    type: string
                   maxTimeRemaining:
                     type: string
                   message:
@@ -165,8 +193,6 @@ spec:
                   script:
                     type: string
                   state:
-                    type: string
-                  updated:
                     type: string
                 type: object
               state:

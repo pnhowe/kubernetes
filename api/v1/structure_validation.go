@@ -23,7 +23,6 @@ import (
 	"regexp"
 
 	client "github.com/t3kton/contractor_goclient"
-	"t3kton.com/pkg/contractor"
 )
 
 var config_name_regex = regexp.MustCompile(`^[<>\-~]?[a-zA-Z0-9][a-zA-Z0-9_\-]*(:[a-zA-Z0-9]+)?$`)
@@ -31,12 +30,18 @@ var config_name_regex = regexp.MustCompile(`^[<>\-~]?[a-zA-Z0-9][a-zA-Z0-9_\-]*(
 func (s *Structure) validateStructure(ctx context.Context, client *client.Contractor) []error {
 	var errs []error
 
-	_, err := client.BuildingStructureGet(ctx, s.Spec.ID)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("structure not found"))
+	if s.Spec.ID == 0 {
+		errs = append(errs, fmt.Errorf("ID not specified"))
+	} else {
+		_, err := client.BuildingStructureGet(ctx, s.Spec.ID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("structure not found"))
+		}
 	}
 
-	if s.Spec.BluePrint != "" {
+	if s.Spec.BluePrint == "" {
+		errs = append(errs, fmt.Errorf("blueprint not specified"))
+	} else {
 		_, err := client.BlueprintStructureBluePrintGet(ctx, s.Spec.BluePrint)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("blueprint not found"))
@@ -82,7 +87,7 @@ func (s *Structure) validateChanges(ctx context.Context, client *client.Contract
 	return errs
 }
 
-func validateConfigValues(configurationValues map[string]contractor.ConfigValue) error {
+func validateConfigValues(configurationValues map[string]ConfigValue) error {
 	for name := range configurationValues {
 		if !config_name_regex.MatchString(name) {
 			return fmt.Errorf("invalid configuration value name '%s'", name)

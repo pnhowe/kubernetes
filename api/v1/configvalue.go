@@ -1,30 +1,32 @@
-package contractor
+package v1
 
 import (
 	"encoding/json"
 	"fmt"
-
-	"k8s.io/apimachinery/pkg/util/intstr"
+	"strconv"
+	"strings"
 )
 
-// _k8s:openapi-gen=true
-// _kubebuilder:validation:Type=object
-// _kubebuilder:validation:Format=int-or-str
-// _kubebuilder:validation:Schemaless
-// _kubebuilder:pruning:PreserveUnknownFields
+// keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
+// and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
+// +kubebuilder:object:generate=false
 type ConfigValue struct {
 	// +kubebuilder:validation:Required
 	Type ConfigValueType `json:"type,omitempty"`
 	// +kubebuilder:validation:Optional
-	IntVal int64 `json:"int,omitempty"`
+	IntVal int64 `json:"intVal,omitempty"`
 	// +kubebuilder:validation:Optional
-	FloatVal float64 `json:"float,omitempty"`
+	FloatVal float64 `json:"floatVal,omitempty"`
 	// +kubebuilder:validation:Optional
-	StrVal string `json:"string,omitempty"`
+	StrVal string `json:"strVal,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:Optional
-	ArrayVal []intstr.IntOrString `json:"array,omitempty"`
+	ArrayVal []ConfigValue `json:"arrayVal,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:Optional
-	MapVal map[string]intstr.IntOrString `json:"map,omitempty"`
+	MapVal map[string]ConfigValue `json:"mapVal,omitempty"`
 }
 
 type ConfigValueType string
@@ -94,18 +96,23 @@ func FromInterface(val interface{}) ConfigValue {
 		return ConfigValue{Type: Float, FloatVal: float64(v)}
 	case float64:
 		return ConfigValue{Type: Float, FloatVal: v}
-	case []intstr.IntOrString:
+	case []ConfigValue:
 		return ConfigValue{Type: Array, ArrayVal: v}
-	case map[string]intstr.IntOrString:
+	case map[string]ConfigValue:
 		return ConfigValue{Type: Map, MapVal: v}
 	}
 
 	return ConfigValue{Type: String, StrVal: val.(string)}
 }
 
-// FromInt64 creates an ConfigValue object with an int64 value.
+// FromInt64 creates an ConfigValue object with an int value.
 func FromInt64(val int64) ConfigValue {
 	return ConfigValue{Type: Int, IntVal: val}
+}
+
+// FromFloat creates an ConfigValue object with an float value.
+func FromFloat64(val float64) ConfigValue {
+	return ConfigValue{Type: Float, FloatVal: val}
 }
 
 // FromString creates an ConfigValue object with a string value.
@@ -114,9 +121,47 @@ func FromString(val string) ConfigValue {
 }
 
 // FromSlice creates an ConfigValue object with a slice value.
-func FromSlice(val []intstr.IntOrString) ConfigValue {
+func FromSlice(val []ConfigValue) ConfigValue {
 	return ConfigValue{Type: Array, ArrayVal: val}
 }
+
+// // Unmarshal implements the yaml.Unmarshaller interface.
+// func (c *ConfigValue) Unmarshal(value []byte) error {
+// 	if value[0] == '"' {
+// 		c.Type = String
+// 		return yaml.Unmarshal(value, &c.StrVal)
+// 	} else if value[0] == '[' {
+// 		c.Type = Array
+// 		return yaml.Unmarshal(value, &c.ArrayVal)
+// 	} else if value[0] == '{' {
+// 		c.Type = Map
+// 		return yaml.Unmarshal(value, &c.MapVal)
+// 	}
+// 	c.Type = Int
+// 	if yaml.Unmarshal(value, &c.IntVal) == nil {
+// 		return nil
+// 	}
+// 	c.Type = Float
+// 	return yaml.Unmarshal(value, &c.FloatVal)
+// }
+
+// // Marshal implements the json.Marshaller interface.
+// func (c ConfigValue) Marshal() ([]byte, error) {
+// 	switch c.Type {
+// 	case Int:
+// 		return yaml.Marshal(c.IntVal)
+// 	case Float:
+// 		return yaml.Marshal(c.FloatVal)
+// 	case String:
+// 		return yaml.Marshal(c.StrVal)
+// 	case Array:
+// 		return yaml.Marshal(c.ArrayVal)
+// 	case Map:
+// 		return yaml.Marshal(c.MapVal)
+// 	default:
+// 		return []byte{}, fmt.Errorf("impossible configValue type")
+// 	}
+// }
 
 // UnmarshalJSON implements the json.Unmarshaller interface.
 func (c *ConfigValue) UnmarshalJSON(value []byte) error {
@@ -130,12 +175,12 @@ func (c *ConfigValue) UnmarshalJSON(value []byte) error {
 		c.Type = Map
 		return json.Unmarshal(value, &c.MapVal)
 	}
-	c.Type = Float
-	if json.Unmarshal(value, &c.FloatVal) == nil {
+	c.Type = Int
+	if json.Unmarshal(value, &c.IntVal) == nil {
 		return nil
 	}
-	c.Type = Int
-	return json.Unmarshal(value, &c.IntVal)
+	c.Type = Float
+	return json.Unmarshal(value, &c.FloatVal)
 }
 
 // MarshalJSON implements the json.Marshaller interface.
@@ -152,7 +197,39 @@ func (c ConfigValue) MarshalJSON() ([]byte, error) {
 	case Map:
 		return json.Marshal(c.MapVal)
 	default:
-		return []byte{}, fmt.Errorf("impossible ConfigValue Type")
+		return []byte{}, fmt.Errorf("impossible configValue type")
+	}
+}
+
+// String returns the string value, or the Itoa of the int value.
+func (c *ConfigValue) String() string {
+	if c == nil {
+		return "<nil>"
+	}
+
+	switch c.Type {
+	case Int:
+		return strconv.FormatInt(c.IntVal, 10)
+	case Float:
+		return strconv.FormatFloat(c.FloatVal, 'f', -1, 64)
+	case String:
+		return c.StrVal
+	case Array:
+		string_list := make([]string, len(c.ArrayVal))
+		for i, item := range c.ArrayVal {
+			string_list[i] = item.String()
+		}
+		return strings.Join(string_list, ", ")
+	case Map:
+		string_list := make([]string, len(c.MapVal))
+		i := 0
+		for key, item := range c.MapVal {
+			string_list[i] = key + ": " + item.String()
+			i += 1
+		}
+		return strings.Join(string_list, ", ")
+	default:
+		return "<invalid>"
 	}
 }
 
@@ -167,12 +244,12 @@ func (c ConfigValue) DeepCopy() *ConfigValue {
 	case String:
 		copy.StrVal = c.StrVal
 	case Array:
-		copy.ArrayVal = make([]intstr.IntOrString, len(c.ArrayVal))
+		copy.ArrayVal = make([]ConfigValue, len(c.ArrayVal))
 		for key, val := range c.ArrayVal {
 			copy.ArrayVal[key] = val
 		}
 	case Map:
-		copy.MapVal = make(map[string]intstr.IntOrString, len(c.MapVal))
+		copy.MapVal = make(map[string]ConfigValue, len(c.MapVal))
 		for key, val := range c.MapVal {
 			copy.MapVal[key] = val
 		}
@@ -180,13 +257,6 @@ func (c ConfigValue) DeepCopy() *ConfigValue {
 
 	return &copy
 }
-
-// // OpenAPIV3OneOfTypes is used by the kube-openapi generator when constructing
-// // the OpenAPI v3 spec of this type.
-// func (ConfigValue) OpenAPIV3OneOfTypes() []string {
-// 	panic("Hello???")
-// 	//return []string{"integer", "string", "array", "object"}
-// }
 
 /*
 https://github.com/kubernetes/enhancements/tree/master/keps/sig-api-machinery/1027-api-unions

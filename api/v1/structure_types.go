@@ -17,8 +17,9 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"t3kton.com/pkg/contractor"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // StructureSpec defines the desired state of Structure
@@ -33,18 +34,26 @@ type StructureSpec struct {
 	// +kubebuilder:validation:Optional
 	BluePrint string `json:"blueprint,omitempty"`
 	// +kubebuilder:validation:Optional
-	ConfigValues map[string]contractor.ConfigValue `json:"configValues,omitempty"`
+	ConfigValues map[string]ConfigValue `json:"configValues,omitempty"`
+	// ConsumerRef can be used to store information about something that is using this structure.
+	// +kubebuilder:validation:Optional
+	ConsumerRef *corev1.ObjectReference `json:"consumerRef,omitempty"`
+	// +kubebuilder:validation:Optional
+	Other intstr.IntOrString `json:"other,omitempty"`
+	//
+	// utility job name, can only be shen when state == built and not job
 }
 
 // StructureStatus defines the observed state of the Structure
 type StructureStatus struct {
-	State               string                            `json:"state,omitempty"`
-	BluePrint           string                            `json:"blueprint,omitempty"`
-	ConfigValues        map[string]contractor.ConfigValue `json:"configValues,omitempty"`
-	Job                 *JobStatus                        `json:"job,omitempty"`
-	Hostname            string                            `json:"hostname,omitempty"`
-	Foundation          string                            `json:"foundation,omitempty"`
-	FoundationBluePrint string                            `json:"foundationBluePrint,omitempty"`
+	State               string                 `json:"state,omitempty"`
+	BluePrint           string                 `json:"blueprint,omitempty"`
+	ConfigValues        map[string]ConfigValue `json:"configValues,omitempty"`
+	Job                 *JobStatus             `json:"job,omitempty"`
+	Hostname            string                 `json:"hostname,omitempty"`
+	Foundation          string                 `json:"foundation,omitempty"`
+	FoundationBluePrint string                 `json:"foundationBluePrint,omitempty"`
+	// utility job name, utility job result, clear name and result when utility job name is blanked in the spec, the status will be in job Status - will auto clear when the job is complete, also emit events when job is set, started, finishes, etc
 }
 
 // JobStatus defines the observed state of the Job
@@ -53,7 +62,8 @@ type JobStatus struct {
 	Script           string `json:"script,omitempty"`
 	Message          string `json:"message,omitempty"`
 	CanStart         string `json:"canstart,omitempty"`
-	Updated          string `json:"updated,omitempty"`
+	Created          string `json:"created,omitempty"`
+	LastUpdated      string `json:"lastupdated,omitempty"` // updated seems to be tweeked with some where, so this is named LastUpdated
 	Progress         string `json:"progress,omitempty"`
 	MaxTimeRemaining string `json:"maxTimeRemaining,omitempty"`
 }

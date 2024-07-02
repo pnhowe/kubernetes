@@ -10,19 +10,20 @@ metadata:
   name: structure-sample
 spec:
   id: 3
-  # state: built
-  # blueprint: test-structure-base
-  # configValues:
-  #   bmc_version:
-  #     type: string
-  #     string: "2.3"
-  #   bios_version:
-  #     type: string
-  #     string: "4.5"
-  #   some_number: 
-  #     type: int
-  #     int: 5
-  #   some_array:
-  #     type: array
-  #     array: [ 1, 2, "sdf" ]
-  
+  state: built
+  blueprint: test-structure-base
+  configValues:
+    myval: 
+      strVal: "test"
+    myotherval: 
+      intVal: 2  
+    valagain:
+      arrayVal: 
+        - intVal: 10
+        - intVal: 15
+    mappingval:
+      mapVal:
+        first:
+          intVal: 42
+        second:
+          strVal: "This is a test"
