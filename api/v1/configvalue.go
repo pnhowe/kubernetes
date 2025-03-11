@@ -1,11 +1,19 @@
 package v1
 
 import (
-	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 )
+
+type ConfigValues map[string]ConfigValue
+
+func (c *ConfigValues) ToInterface() map[string]interface{} {
+	result := map[string]interface{}{}
+	for k, v := range *c {
+		result[k] = v.ToInterface()
+	}
+	return result
+}
 
 // keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
 // and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
@@ -29,9 +37,22 @@ type ConfigValue struct {
 	MapVal map[string]ConfigValue `json:"mapVal,omitempty"`
 }
 
+// // +kubebuilder:validation:Type=object
+// // +kubebuilder:validation:Format=string
+// // +kubebuilder:object:generate=false
+// type ConfigValue struct {
+// 	Type     ConfigValueType
+// 	IntVal   int64
+// 	FloatVal float64
+// 	StrVal   string
+// 	ArrayVal []ConfigValue
+// 	MapVal   map[string]ConfigValue
+// }
+
 type ConfigValueType string
 
 const (
+	Nil    ConfigValueType = "" // nil must have an empty type, that way new non-initilized values are nil and not undefined
 	Int    ConfigValueType = "int"
 	Float  ConfigValueType = "float"
 	String ConfigValueType = "string"
@@ -86,6 +107,8 @@ const (
 // FromInterface creates an ConfigValue from interface{}
 func FromInterface(val interface{}) ConfigValue {
 	switch v := val.(type) {
+	case nil:
+		return ConfigValue{Type: Nil}
 	case int:
 		return ConfigValue{Type: Int, IntVal: int64(v)}
 	case int32:
@@ -105,12 +128,63 @@ func FromInterface(val interface{}) ConfigValue {
 	return ConfigValue{Type: String, StrVal: val.(string)}
 }
 
+func (c *ConfigValue) ToInterface() interface{} {
+	if c == nil {
+		return nil
+	}
+
+	switch c.Type {
+	case Nil:
+		return nil
+	case Int:
+		return c.IntVal
+	case Float:
+		return c.FloatVal
+	case String:
+		return c.StrVal
+	case Array:
+		interface_list := make([]interface{}, len(c.ArrayVal))
+		for k, v := range c.ArrayVal {
+			interface_list[k] = v.ToInterface()
+		}
+		return interface_list
+	case Map:
+		interface_list := make(map[string]interface{}, len(c.MapVal))
+		for k, v := range c.MapVal {
+			interface_list[k] = v.ToInterface()
+		}
+		return interface_list
+	}
+
+	return nil
+}
+
+// FromNil creates an ConfigValue object with an float value.
+func FromNil() ConfigValue {
+	return ConfigValue{Type: Nil}
+}
+
+// FromInt creates an ConfigValue object with an int value.
+func FromInt(val int) ConfigValue {
+	return ConfigValue{Type: Int, IntVal: int64(val)}
+}
+
+// FromInt32 creates an ConfigValue object with an int value.
+func FromInt32(val int32) ConfigValue {
+	return ConfigValue{Type: Int, IntVal: int64(val)}
+}
+
 // FromInt64 creates an ConfigValue object with an int value.
 func FromInt64(val int64) ConfigValue {
 	return ConfigValue{Type: Int, IntVal: val}
 }
 
 // FromFloat creates an ConfigValue object with an float value.
+func FromFloat32(val float32) ConfigValue {
+	return ConfigValue{Type: Float, FloatVal: float64(val)}
+}
+
+// FromFloat64 creates an ConfigValue object with an float value.
 func FromFloat64(val float64) ConfigValue {
 	return ConfigValue{Type: Float, FloatVal: val}
 }
@@ -127,27 +201,43 @@ func FromSlice(val []ConfigValue) ConfigValue {
 
 // // Unmarshal implements the yaml.Unmarshaller interface.
 // func (c *ConfigValue) Unmarshal(value []byte) error {
+// 	if (value[0] == 'n') && (value[1] == 'u') && (value[2] == 'l') && (value[3] == 'l') {
+// 		c.Type = Nil
+// 		return nil
+// 	}
+
 // 	if value[0] == '"' {
 // 		c.Type = String
 // 		return yaml.Unmarshal(value, &c.StrVal)
-// 	} else if value[0] == '[' {
+// 	}
+
+// 	if value[0] == '[' {
 // 		c.Type = Array
 // 		return yaml.Unmarshal(value, &c.ArrayVal)
-// 	} else if value[0] == '{' {
+// 	}
+// 	if value[0] == '{' {
 // 		c.Type = Map
 // 		return yaml.Unmarshal(value, &c.MapVal)
 // 	}
-// 	c.Type = Int
+
 // 	if yaml.Unmarshal(value, &c.IntVal) == nil {
+// 		c.Type = Int
 // 		return nil
 // 	}
-// 	c.Type = Float
-// 	return yaml.Unmarshal(value, &c.FloatVal)
+
+// 	if json.Unmarshal(value, &c.FloatVal) == nil {
+// 		c.Type = Float
+// 		return nil
+// 	}
+
+// 	return fmt.Errorf("unable to Unmarshal YAML")
 // }
 
 // // Marshal implements the json.Marshaller interface.
 // func (c ConfigValue) Marshal() ([]byte, error) {
 // 	switch c.Type {
+// 	case Nil:
+// 		return []byte("null"), nil
 // 	case Int:
 // 		return yaml.Marshal(c.IntVal)
 // 	case Float:
@@ -163,43 +253,64 @@ func FromSlice(val []ConfigValue) ConfigValue {
 // 	}
 // }
 
-// UnmarshalJSON implements the json.Unmarshaller interface.
-func (c *ConfigValue) UnmarshalJSON(value []byte) error {
-	if value[0] == '"' {
-		c.Type = String
-		return json.Unmarshal(value, &c.StrVal)
-	} else if value[0] == '[' {
-		c.Type = Array
-		return json.Unmarshal(value, &c.ArrayVal)
-	} else if value[0] == '{' {
-		c.Type = Map
-		return json.Unmarshal(value, &c.MapVal)
-	}
-	c.Type = Int
-	if json.Unmarshal(value, &c.IntVal) == nil {
-		return nil
-	}
-	c.Type = Float
-	return json.Unmarshal(value, &c.FloatVal)
-}
+// // UnmarshalJSON implements the json.Unmarshaller interface.
+// func (c *ConfigValue) UnmarshalJSON(value []byte) error {
+// 	if (value[0] == 'n') && (value[1] == 'u') && (value[2] == 'l') && (value[3] == 'l') {
+// 		c.Type = Nil
+// 		return nil
+// 	}
 
-// MarshalJSON implements the json.Marshaller interface.
-func (c ConfigValue) MarshalJSON() ([]byte, error) {
-	switch c.Type {
-	case Int:
-		return json.Marshal(c.IntVal)
-	case Float:
-		return json.Marshal(c.FloatVal)
-	case String:
-		return json.Marshal(c.StrVal)
-	case Array:
-		return json.Marshal(c.ArrayVal)
-	case Map:
-		return json.Marshal(c.MapVal)
-	default:
-		return []byte{}, fmt.Errorf("impossible configValue type")
-	}
-}
+// 	if value[0] == '"' {
+// 		c.Type = String
+// 		return json.Unmarshal(value, &c.StrVal)
+// 	}
+
+// 	if value[0] == '[' {
+// 		c.Type = Array
+// 		return json.Unmarshal(value, &c.ArrayVal)
+// 	}
+
+// 	if value[0] == '{' {
+// 		c.Type = Map
+// 		return json.Unmarshal(value, &c.MapVal)
+// 	}
+
+// 	if json.Unmarshal(value, &c.IntVal) == nil {
+// 		c.Type = Int
+// 		return nil
+// 	}
+
+// 	if json.Unmarshal(value, &c.FloatVal) == nil {
+// 		c.Type = Float
+// 		return nil
+// 	}
+
+// 	return fmt.Errorf("unable to Unmarshal JSON")
+// }
+
+// // MarshalJSON implements the json.Marshaller interface.
+// func (c ConfigValue) MarshalJSON() ([]byte, error) {
+// 	switch c.Type {
+// 	case Nil:
+// 		return []byte("null"), nil
+// 	case Int:
+// 		return json.Marshal(c.IntVal)
+// 	case Float:
+// 		return json.Marshal(c.FloatVal)
+// 	case String:
+// 		return json.Marshal(c.StrVal)
+// 	case Array:
+// 		return json.Marshal(c.ArrayVal)
+// 	case Map:
+// 		return json.Marshal(c.MapVal)
+// 	default:
+// 		return []byte{}, fmt.Errorf("impossible configValue type")
+// 	}
+// }
+
+// func (c ConfigValue) MarshalText() (text []byte, err error) {
+// 	return []byte{}, fmt.Errorf("Not implemented")
+// }
 
 // String returns the string value, or the Itoa of the int value.
 func (c *ConfigValue) String() string {
@@ -208,6 +319,8 @@ func (c *ConfigValue) String() string {
 	}
 
 	switch c.Type {
+	case Nil:
+		return ""
 	case Int:
 		return strconv.FormatInt(c.IntVal, 10)
 	case Float:
@@ -216,27 +329,28 @@ func (c *ConfigValue) String() string {
 		return c.StrVal
 	case Array:
 		string_list := make([]string, len(c.ArrayVal))
-		for i, item := range c.ArrayVal {
-			string_list[i] = item.String()
+		for k, v := range c.ArrayVal {
+			string_list[k] = v.String()
 		}
 		return strings.Join(string_list, ", ")
 	case Map:
 		string_list := make([]string, len(c.MapVal))
 		i := 0
-		for key, item := range c.MapVal {
-			string_list[i] = key + ": " + item.String()
+		for k, v := range c.MapVal {
+			string_list[i] = k + ": " + v.String()
 			i += 1
 		}
 		return strings.Join(string_list, ", ")
-	default:
-		return "<invalid>"
 	}
+	return "<invalid>"
 }
 
 // DeepCopy copys deeply
 func (c ConfigValue) DeepCopy() *ConfigValue {
 	copy := ConfigValue{Type: c.Type}
 	switch c.Type {
+	case Nil:
+		//
 	case Int:
 		copy.IntVal = c.IntVal
 	case Float:

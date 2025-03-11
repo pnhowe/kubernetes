@@ -52,6 +52,7 @@ func (r *Structure) SetupWebhookWithManager(mgr ctrl.Manager) error {
 var _ webhook.Defaulter = &Structure{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
+// We will copy the State, BluePrint, and ConfigValues from contractor if they are blank
 func (r *Structure) Default() {
 	structurelog.Info("default", "name", r.Name)
 	if r.Spec.ID == 0 {
@@ -128,6 +129,8 @@ func (r *Structure) ValidateUpdate(old runtime.Object) (admission.Warnings, erro
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *Structure) ValidateDelete() (admission.Warnings, error) {
 	structurelog.Info("validate delete", "name", r.Name)
+
+	// TODO: Do we want to make sure the structure is planned before deleting?
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil

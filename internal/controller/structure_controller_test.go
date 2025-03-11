@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -37,6 +38,32 @@ import (
 	"t3kton.com/pkg/contractor/test_contractor"
 )
 
+type buildingStructureMatcher struct {
+	//contractorClient.BuildingStructure
+	uri string
+}
+
+func BuildingStructureMatcher(uri string) gomock.Matcher {
+	fmt.Println("Setting up Macher for", uri)
+	return &buildingStructureMatcher{uri}
+}
+
+func (b *buildingStructureMatcher) Matches(x any) bool {
+	switch x.(type) {
+	case *contractorClient.BuildingStructure:
+		return x.(*contractorClient.BuildingStructure).GetURI() == b.uri
+	}
+	return false
+}
+
+func (b *buildingStructureMatcher) String() string {
+	return "with uri " + b.uri
+}
+
+func TimeAddr(v time.Time) *time.Time {
+	return &v
+}
+
 var _ = Describe("Structure Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
@@ -45,16 +72,17 @@ var _ = Describe("Structure Controller", func() {
 		)
 
 		var (
-			mockCtrl                                                                         *gomock.Controller
-			mockCINP                                                                         *test_contractor.MockCInPClient
-			mockStructure                                                                    *contractorClient.BuildingStructure
-			mockFoundation                                                                   *contractorClient.BuildingFoundation
-			mockJob                                                                          *contractorClient.ForemanStructureJob
-			mockJobScriptName                                                                string
-			mockStructureState                                                               string
-			mockJobID                                                                        int
-			uri                                                                              *cinp.URI
-			doGetStructure, doGetFoudation, doCreateCall, doDestroyCall, doGetJob, doFindJob *gomock.Call
+			mockCtrl                                          *gomock.Controller
+			mockCINP                                          *test_contractor.MockCInPClient
+			mockStructure                                     *contractorClient.BuildingStructure
+			mockFoundation                                    *contractorClient.BuildingFoundation
+			mockJob                                           *contractorClient.ForemanStructureJob
+			mockJobScriptName                                 string
+			mockStructureState                                string
+			mockJobID                                         int
+			uri                                               *cinp.URI
+			doGetStructure, doUpdateStructure, doGetFoudation *gomock.Call
+			doCreateCall, doDestroyCall, doGetJob, doFindJob  *gomock.Call
 		)
 
 		ctx := context.Background()
@@ -112,6 +140,14 @@ var _ = Describe("Structure Controller", func() {
 					return &result, nil
 				})
 
+			// testing Update
+			doUpdateStructure = mockCINP.EXPECT().
+				Update(gomock.Any(), BuildingStructureMatcher("/api/v1/Building/Structure:42:")).
+				DoAndReturn(func(_ context.Context, _ *contractorClient.BuildingStructure) (*cinp.Object, error) {
+					result := cinp.Object(mockStructure)
+					return &result, nil
+				})
+
 			// testing Get Foundation
 			doGetFoudation = mockCINP.EXPECT().
 				Get(gomock.Any(), gomock.Eq("/api/v1/Building/Foundation:test:")).
@@ -150,7 +186,7 @@ var _ = Describe("Structure Controller", func() {
 					return nil
 				})
 
-			// testing DoCreate
+			// testing doDestroy
 			doDestroyCall = mockCINP.EXPECT().
 				Call(gomock.Any(), gomock.Eq("/api/v1/Building/Structure:42:(doDestroy)"), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, _ string, _ *map[string]interface{}, result *int) error {
@@ -193,6 +229,7 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			doGetStructure.Times(0)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(0)
 			doGetJob.Times(0)
 			doFindJob.Times(0)
@@ -210,8 +247,8 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Update(ctx, structure)).NotTo(HaveOccurred())
 
 			result, err = controllerReconciler.Reconcile(ctx, req)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(time.Second * 60))
+			Expect(err).To(MatchError("Structure is not fully defined"))
+			Expect(result.IsZero()).To(Equal(true))
 		})
 
 		It("fall through when it is allready in the correct state(planned) and blueprint", func() {
@@ -247,6 +284,7 @@ var _ = Describe("Structure Controller", func() {
 			mockJobID = 0
 
 			doGetStructure.Times(2)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(2)
 			doGetJob.Times(0)
 			doFindJob.Times(2)
@@ -315,6 +353,7 @@ var _ = Describe("Structure Controller", func() {
 			mockJobID = 0
 
 			doGetStructure.Times(2)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(2)
 			doGetJob.Times(0)
 			doFindJob.Times(2)
@@ -392,6 +431,7 @@ var _ = Describe("Structure Controller", func() {
 			mockJobScriptName = ""
 
 			doGetStructure.Times(6)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(6)
 			doGetJob.Times(2)
 			doFindJob.Times(6)
@@ -514,6 +554,7 @@ var _ = Describe("Structure Controller", func() {
 			mockJobScriptName = ""
 
 			doGetStructure.Times(6)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(6)
 			doGetJob.Times(2)
 			doFindJob.Times(6)
@@ -635,6 +676,7 @@ var _ = Describe("Structure Controller", func() {
 			mockJobID = 37
 
 			doGetStructure.Times(4)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(4)
 			doGetJob.Times(4)
 			doFindJob.Times(4)
@@ -734,6 +776,7 @@ var _ = Describe("Structure Controller", func() {
 			mockJobScriptName = "Destroy"
 
 			doGetStructure.Times(4)
+			doUpdateStructure.Times(0)
 			doGetFoudation.Times(4)
 			doGetJob.Times(4)
 			doFindJob.Times(4)
@@ -832,10 +875,11 @@ var _ = Describe("Structure Controller", func() {
 			mockStructureState = "planned"
 			mockJobID = 0
 
-			doGetStructure.Times(1)
-			doGetFoudation.Times(1)
+			doGetStructure.Times(2)
+			doUpdateStructure.Times(1)
+			doGetFoudation.Times(2)
 			doGetJob.Times(0)
-			doFindJob.Times(1)
+			doFindJob.Times(2)
 			doCreateCall.Times(0)
 			doDestroyCall.Times(0)
 
@@ -850,14 +894,16 @@ var _ = Describe("Structure Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.IsZero()).To(Equal(true))
 
-			By("Checking Status After check")
+			By("Checking Status Before Setting Values")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
 			Expect(structure2.Status.State).To(Equal("planned"))
 			Expect(structure2.Status.Job).To(BeNil())
 			Expect(structure2.Spec.ConfigValues).To(BeNil())
 
-			structure.Spec.ConfigValues = map[string]contractorv1.ConfigValue{}
-			structure.Spec.ConfigValues["test"] = contractorv1.FromInt64(24)
+			By("Setting Config values")
+			structure.Spec.ConfigValues = contractorv1.ConfigValues{}
+			structure.Spec.ConfigValues["test"] = contractorv1.FromString("asdf")
+			structure.Spec.ConfigValues["test2"] = contractorv1.FromInt(42)
 			Expect(k8sClient.Update(ctx, structure)).To(Succeed())
 
 			By("Reconciling") // update config values
@@ -865,15 +911,11 @@ var _ = Describe("Structure Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(Equal(true))
 
-			By("Checking Status After check")
+			By("Checking Status After Setting Values")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
 			Expect(structure2.Status.State).To(Equal("planned"))
 			Expect(structure2.Status.Job).To(BeNil())
-			Expect(structure2.Spec.ConfigValues).To(BeNil())
+			Expect(structure2.Spec.ConfigValues).ToNot(BeNil())
 		})
 	})
 })
-
-func TimeAddr(v time.Time) *time.Time {
-	return &v
-}

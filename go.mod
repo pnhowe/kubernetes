@@ -1,6 +1,6 @@
 module t3kton.com
 
-go 1.21
+go 1.23
 
 require (
 	github.com/cinp/go v1.2.4

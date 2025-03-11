@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"t3kton.com/pkg/contractor"
 
 	"github.com/google/go-cmp/cmp"
@@ -65,8 +66,10 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	fmt.Println("rev 0:", structure.ResourceVersion)
+	fmt.Println("  ||||||||||||||||")
+	fmt.Println("rev:", structure.ResourceVersion)
 	fmt.Printf("spec: %+v\n", structure.Spec)
+	fmt.Printf("configvalues: %+v\n", structure.Spec.ConfigValues)
 
 	if structure.Spec.ID == 0 {
 		log.Info("ID must be specified")
@@ -75,26 +78,49 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if (structure.Spec.State == "") || (structure.Spec.BluePrint == "") {
 		log.Info("Structure is not fully defined")
-		return ctrl.Result{RequeueAfter: time.Second * 60}, nil // wait for the State and BluePrint to be defined
+		//return ctrl.Result{Requeue: true}, nil // wait for the State and BluePrint to be defined, TODO: do we need to requeue here? will this enitiy get auto-requeued when the spec is updated?
+		return ctrl.Result{}, fmt.Errorf("Structure is not fully defined")
 	}
 
 	client := contractor.GetClient(ctx)
 
+	log.Info("Getting Structure", "id", structure.Spec.ID)
+	t3kton_structure, err := client.BuildingStructureGet(ctx, structure.Spec.ID)
+	if err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "get structure faild")
+	}
+
 	status := contractorv1.StructureStatus{}
-	err = updateStatus(ctx, log, client, structure.Spec.ID, &status)
+	err = updateStatus(ctx, log, client, t3kton_structure, &status)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "update status faild")
 	}
 
+	// See if an existing job has finished
+	if structure.Status.Job != nil && status.Job == nil {
+		r.publishEvent(ctx, log, &structure, "JobFinished", "Job '"+structure.Status.Job.Script+"' Finished")
+
+		structure.Status.Job = nil
+		err = r.Status().Update(ctx, &structure)
+		fmt.Println("Job Done update err:", err)
+		if apierrors.IsConflict(err) {
+			log.Info("Structure Changed on us, will try again")
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// see if the state of the structure/foundation/job on contractor	is different from what we have
 	diff := cmp.Diff(structure.Status, status)
 	if diff != "" {
+		// it is, update our copy and requeue
+		fmt.Println("-- Status Diff --")
 		fmt.Println(diff)
 		log.Info("Status Changed", "diff", diff)
 		status.DeepCopyInto(&structure.Status)
-
-		fmt.Println("Update")
 		err = r.Status().Update(ctx, &structure)
-		fmt.Println("err:", err)
+		fmt.Println("Status Update err:", err)
 		if apierrors.IsConflict(err) {
 			log.Info("Structure Changed on us, will try again")
 			return ctrl.Result{Requeue: true}, nil
@@ -108,12 +134,26 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	fmt.Println("No diff")
+	// if there is a job, requeue and wait for the job to finish before we do anything else
 	if structure.Status.Job != nil {
-		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+		return ctrl.Result{RequeueAfter: time.Second * 30}, nil // TODO: should this be a regular requeue?
 	}
 
 	// Check Config Values, if need changing, change them then requeue, no delay
+	diff = cmp.Diff(structure.Spec.ConfigValues, status.ConfigValues)
+	if diff != "" {
+		fmt.Println("--- Config Value Diff ---")
+		fmt.Printf("diff Spec: %+v\n", structure.Spec.ConfigValues)
+		fmt.Printf("diff Status: %+v\n", status.ConfigValues)
+		fmt.Println(diff)
+		// We only want to update the config values, make an empty copy with only config values so only thoes get updated
+		tmp_structure := client.BuildingStructureNewWithID(*t3kton_structure.ID)
+		tmp_ConfigValues := structure.Spec.ConfigValues.ToInterface()
+		tmp_structure.ConfigValues = &tmp_ConfigValues
+		tmp_structure.Update(ctx)
+		log.Info("ConfigValues updated")
+		return ctrl.Result{Requeue: true}, nil
+	}
 
 	// Wait for the job to be cleared up and the state to be set
 	if (structure.Status.State == structure.Spec.State) && (structure.Status.BluePrint == structure.Spec.BluePrint) {
@@ -132,11 +172,12 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("invalid target state")
 	}
 
+	fmt.Printf("**** Make that job *** %+v\n", jobName)
 	jobID, err := r.startJob(ctx, log, client, structure.Spec.ID, jobName)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "create job faild")
 	}
-
+	fmt.Printf("**** Job Created *** %+v\n", jobID)
 	r.publishEvent(ctx, log, &structure, "JobCreated", "job '"+jobName+"' created, ID:"+strconv.Itoa(jobID))
 	return ctrl.Result{Requeue: true}, nil
 }
@@ -144,7 +185,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // SetupWithManager sets up the controller with the Manager.
 func (r *StructureReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		//WithOptions(controller.Options{MaxConcurrentReconciles: 8}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 4}). // TODO: rate limiter
 		For(&contractorv1.Structure{}).
 		Complete(r)
 }
@@ -161,6 +202,8 @@ func (r *StructureReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *StructureReconciler) startJob(ctx context.Context, log logr.Logger, client *cclient.Contractor, ID int, jobName string) (int, error) {
 	log.Info("job start", "structure", ID, "name", jobName)
 	structure := client.BuildingStructureNewWithID(ID)
+
+	fmt.Println("_____________________ Start Job ____________________")
 
 	var err error
 	var jobID int
@@ -214,13 +257,7 @@ func (r *StructureReconciler) publishEvent(ctx context.Context, log logr.Logger,
 	}
 }
 
-func updateStatus(ctx context.Context, log logr.Logger, client *cclient.Contractor, ID int, status *contractorv1.StructureStatus) error {
-	log.Info("Getting Structure", "id", ID)
-
-	structure, err := client.BuildingStructureGet(ctx, ID)
-	if err != nil {
-		return err
-	}
+func updateStatus(ctx context.Context, log logr.Logger, client *cclient.Contractor, structure *cclient.BuildingStructure, status *contractorv1.StructureStatus) error {
 
 	log.Info("Getting Foundation", "id", *structure.Foundation)
 	foundation, err := client.BuildingFoundationGetURI(ctx, *structure.Foundation)
@@ -232,12 +269,11 @@ func updateStatus(ctx context.Context, log logr.Logger, client *cclient.Contract
 
 	updateFoundationStatus(foundation, status)
 
-	log.Info("Getting Job", "structure", ID)
+	log.Info("Getting Job", "structure", structure.ID)
 	jobURI, err := structure.CallGetJob(ctx)
 	if err != nil {
 		return err
 	}
-	log.Info("Job Info", "URI", jobURI)
 
 	if jobURI == "" {
 		status.Job = nil
@@ -305,4 +341,4 @@ func updateJobStatus(job *cclient.ForemanStructureJob, status *contractorv1.Stru
 	}
 }
 
-/// also need events
+// TODO: also need events

@@ -84,6 +84,9 @@ func (s *Structure) validateChanges(ctx context.Context, client *client.Contract
 		errs = append(errs, errors.New("can not change the State while there is a Job"))
 	}
 
+	// TODO: do we allow changing confivalues at any time?  I think so?
+	// TODO: make sure the blueprint value is valid
+
 	return errs
 }
 

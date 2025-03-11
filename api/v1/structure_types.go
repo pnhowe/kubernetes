@@ -34,7 +34,7 @@ type StructureSpec struct {
 	// +kubebuilder:validation:Optional
 	BluePrint string `json:"blueprint,omitempty"`
 	// +kubebuilder:validation:Optional
-	ConfigValues map[string]ConfigValue `json:"configValues,omitempty"`
+	ConfigValues ConfigValues `json:"configValues,omitempty"`
 	// ConsumerRef can be used to store information about something that is using this structure.
 	// +kubebuilder:validation:Optional
 	ConsumerRef *corev1.ObjectReference `json:"consumerRef,omitempty"`
@@ -46,13 +46,13 @@ type StructureSpec struct {
 
 // StructureStatus defines the observed state of the Structure
 type StructureStatus struct {
-	State               string                 `json:"state,omitempty"`
-	BluePrint           string                 `json:"blueprint,omitempty"`
-	ConfigValues        map[string]ConfigValue `json:"configValues,omitempty"`
-	Job                 *JobStatus             `json:"job,omitempty"`
-	Hostname            string                 `json:"hostname,omitempty"`
-	Foundation          string                 `json:"foundation,omitempty"`
-	FoundationBluePrint string                 `json:"foundationBluePrint,omitempty"`
+	State               string       `json:"state,omitempty"`
+	BluePrint           string       `json:"blueprint,omitempty"`
+	ConfigValues        ConfigValues `json:"configValues,omitempty"`
+	Job                 *JobStatus   `json:"job,omitempty"`
+	Hostname            string       `json:"hostname,omitempty"`
+	Foundation          string       `json:"foundation,omitempty"`
+	FoundationBluePrint string       `json:"foundationBluePrint,omitempty"`
 	// utility job name, utility job result, clear name and result when utility job name is blanked in the spec, the status will be in job Status - will auto clear when the job is complete, also emit events when job is set, started, finishes, etc
 }
 

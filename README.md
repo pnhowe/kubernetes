@@ -118,12 +118,13 @@ limitations under the License.
 
 
 mkdir -p /tmp/k8s-webhook-server/serving-certs
-openssl req -x509 -newkey rsa:4096 -keyout /tmp/k8s-webhook-server/serving-certs/tls.key -out /tmp/k8s-webhook-server/serving-certs/tls.crt -sha256 -days 3650 -nodes -subj "/C=XX/ST=StateName/L=CityName/O=CompanyName/OU=CompanySectionName/CN=CommonNameOrHostname"
+openssl req -x509 -newkey rsa:4096 -keyout /tmp/k8s-webhook-server/serving-certs/tls.key -out /tmp/k8s-webhook-server/serving-certs/tls.crt -sha256 -days 3650 -nodes -subj "/C=NA/ST=NA/L=NA/O=NA/OU=NA/CN=NA"
 
 kind create cluster
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml
 make install
-set +x ; export VER=0.0.5 ; make undeploy ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
+
+make undeploy ; set +x ; export VER=0.0.9 ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
 make run
 
 kubectl create -f config/samples/contractor_v1_structure.yaml
