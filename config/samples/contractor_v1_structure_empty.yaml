@@ -1,0 +1,9 @@
+apiVersion: contractor.t3kton.com/v1
+kind: Structure
+metadata:
+  labels:
+    app.kubernetes.io/name: kubernetes
+    app.kubernetes.io/managed-by: kustomize
+  name: structure-sample
+spec:
+  id: 3

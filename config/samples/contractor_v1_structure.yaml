@@ -2,11 +2,8 @@ apiVersion: contractor.t3kton.com/v1
 kind: Structure
 metadata:
   labels:
-    app.kubernetes.io/name: structure
-    app.kubernetes.io/instance: structure-sample
-    app.kubernetes.io/part-of: kubernetes
+    app.kubernetes.io/name: kubernetes
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/created-by: kubernetes
   name: structure-sample
 spec:
   id: 3
@@ -14,16 +11,21 @@ spec:
   blueprint: test-structure-base
   configValues:
     myval: 
-      strVal: "test"
+      type: "string"
+      string: "test"
     myotherval: 
-      intVal: 2  
+      type: "int"
+      int: 2  
     valagain:
-      arrayVal: 
-        - intVal: 10
-        - intVal: 15
+      type: "array"
+      array: 
+        - int: 10
+        - int: 15
     mappingval:
-      mapVal:
+      type: "map"
+      map:
         first:
-          intVal: 42
+          int: 42
         second:
-          strVal: "This is a test"
+          string: "This is a test"
+

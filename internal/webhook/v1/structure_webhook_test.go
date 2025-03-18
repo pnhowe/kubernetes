@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,18 +27,16 @@ import (
 	. "github.com/onsi/gomega"
 	contractorClient "github.com/t3kton/contractor_goclient"
 	"go.uber.org/mock/gomock"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"t3kton.com/pkg/contractor"
 	"t3kton.com/pkg/contractor/test_contractor"
+
+	contractorv1 "t3kton.com/api/v1"
 )
 
 var _ = Describe("Structure Webhook", func() {
-	const (
-		resourceName  = "test-structure"
-		namespaceName = "default"
-	)
-
 	var (
+		validator                                                                    StructureCustomValidator
+		defaulter                                                                    StructureCustomDefaulter
 		mockCtrl                                                                     *gomock.Controller
 		mockCINP                                                                     *test_contractor.MockCInPClient
 		mockStructure                                                                *contractorClient.BuildingStructure
@@ -53,12 +51,12 @@ var _ = Describe("Structure Webhook", func() {
 		doGetInvalidStructure, doGetInvalidStructureBluePrint                        *gomock.Call
 	)
 
-	// typeNamespacedName := types.NamespacedName{
-	// 	Name:      resourceName,
-	// 	Namespace: namespaceName,
-	// }
-
 	BeforeEach(func() {
+		validator = StructureCustomValidator{}
+		defaulter = StructureCustomDefaulter{}
+		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
+		Expect(defaulter).NotTo(BeNil(), "Expected validator to be initialized")
+
 		mockCtrl = gomock.NewController(GinkgoT())
 		mockCINP = test_contractor.NewMockCInPClient(mockCtrl)
 		Expect(contractor.SetupTestingFactory(ctx, mockCINP)).NotTo(HaveOccurred())
@@ -162,12 +160,8 @@ var _ = Describe("Structure Webhook", func() {
 	Context("When creating Structure under Defaulting Webhook", func() {
 		It("Should deal with missing id", func() {
 			By("Defaulter Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{},
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{},
 			}
 
 			doGetStructure.Times(0)
@@ -185,7 +179,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call Default")
-			structure.Default()
+			Expect(defaulter.Default(ctx, structure)).ShouldNot(Succeed())
 
 			By("Checking Spec After")
 			Expect(structure.Spec.ID).To(Equal(0))
@@ -196,12 +190,8 @@ var _ = Describe("Structure Webhook", func() {
 
 		It("Should deal with invalid id", func() {
 			By("Defaulter Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{ID: 54321},
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{ID: 54321},
 			}
 
 			doGetStructure.Times(0)
@@ -219,7 +209,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call Default")
-			structure.Default()
+			Expect(defaulter.Default(ctx, structure)).ShouldNot(Succeed())
 
 			By("Checking Spec After")
 			Expect(structure.Spec.ID).To(Equal(54321))
@@ -230,12 +220,8 @@ var _ = Describe("Structure Webhook", func() {
 
 		It("Should fill in the default value if a required field is empty", func() {
 			By("Defaulter Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{ID: 123},
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{ID: 123},
 			}
 
 			doGetStructure.Times(1)
@@ -253,30 +239,26 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call Default")
-			structure.Default()
+			Expect(defaulter.Default(ctx, structure)).Should(Succeed())
 
 			By("Checking Spec After")
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(3))
-			Expect(structure.Spec.ConfigValues["a"]).To(Equal(FromString("asdf")))
-			Expect(structure.Spec.ConfigValues["b"]).To(Equal(FromInt64(12)))
-			Expect(structure.Spec.ConfigValues["c"]).To(Equal(FromFloat64(2.1)))
+			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.FromString("asdf")))
+			Expect(structure.Spec.ConfigValues["b"]).To(Equal(contractorv1.FromInt64(12)))
+			Expect(structure.Spec.ConfigValues["c"]).To(Equal(contractorv1.FromFloat64(2.1)))
 			Expect(structure.Spec.State).To(Equal("planned"))
 		})
 
 		It("Should fall through if state, blueprint, configValues are set", func() {
 			By("Defaulter Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:           123,
 					State:        "built",
 					BluePrint:    "structure-non-base",
-					ConfigValues: map[string]ConfigValue{"2": FromString("Bob")},
+					ConfigValues: map[string]contractorv1.ConfigValue{"2": contractorv1.FromString("Bob")},
 				},
 			}
 
@@ -292,17 +274,17 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("structure-non-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["2"]).To(Equal(FromString("Bob")))
+			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.FromString("Bob")))
 			Expect(structure.Spec.State).To(Equal("built"))
 
 			By("Call Default")
-			structure.Default()
+			Expect(defaulter.Default(ctx, structure)).Should(Succeed())
 
 			By("Checking Spec After")
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("structure-non-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["2"]).To(Equal(FromString("Bob")))
+			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.FromString("Bob")))
 			Expect(structure.Spec.State).To(Equal("built"))
 
 		})
@@ -311,12 +293,8 @@ var _ = Describe("Structure Webhook", func() {
 	Context("When creating Structure under Validating Webhook", func() {
 		It("Should deal with missing values", func() {
 			By("ValidateCreate Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{},
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{},
 			}
 
 			doGetStructure.Times(0)
@@ -334,7 +312,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateCreate")
-			warn, err := structure.ValidateCreate()
+			warn, err := validator.ValidateCreate(ctx, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).ToNot(BeNil())
 			Expect(err.Error()).To(Equal("[ID not specified, blueprint not specified]"))
@@ -348,12 +326,8 @@ var _ = Describe("Structure Webhook", func() {
 
 		It("Should deal with invalid values", func() {
 			By("ValidateCreate Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        54321,
 					BluePrint: "not-right",
 				},
@@ -374,7 +348,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateCreate")
-			warn, err := structure.ValidateCreate()
+			warn, err := validator.ValidateCreate(ctx, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).ToNot(BeNil())
 			Expect(err.Error()).To(Equal("[structure not found, blueprint not found]"))
@@ -388,16 +362,12 @@ var _ = Describe("Structure Webhook", func() {
 
 		It("Should deal with invalid config values", func() {
 			By("ValidateCreate Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        123,
 					BluePrint: "test-structure-base",
-					ConfigValues: map[string]ConfigValue{
-						"a:>test": FromInt64(1),
+					ConfigValues: map[string]contractorv1.ConfigValue{
+						"a:>test": contractorv1.FromInt64(1),
 					},
 				},
 			}
@@ -414,11 +384,11 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(contractorv1.FromInt64(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateCreate")
-			warn, err := structure.ValidateCreate()
+			warn, err := validator.ValidateCreate(ctx, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).ToNot(BeNil())
 			Expect(err.Error()).To(Equal("invalid configuration value name 'a:>test'"))
@@ -427,25 +397,21 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(contractorv1.FromInt64(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 		})
 
 		It("Should deal all valid values", func() {
 			By("ValidateCreate Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        123,
 					BluePrint: "test-structure-base",
-					ConfigValues: map[string]ConfigValue{
-						"a":      FromInt64(1),
-						"a:test": FromInt64(1),
-						">test":  FromInt64(1),
-						"stuff":  FromInt64(1),
+					ConfigValues: map[string]contractorv1.ConfigValue{
+						"a":      contractorv1.FromInt64(1),
+						"a:test": contractorv1.FromInt64(1),
+						">test":  contractorv1.FromInt64(1),
+						"stuff":  contractorv1.FromInt64(1),
 					},
 				},
 			}
@@ -462,14 +428,14 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(4))
-			Expect(structure.Spec.ConfigValues["a"]).To(Equal(FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(FromInt64(1)))
-			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(contractorv1.FromInt64(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateCreate")
-			warn, err := structure.ValidateCreate()
+			warn, err := validator.ValidateCreate(ctx, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).To(BeNil())
 
@@ -477,10 +443,10 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(4))
-			Expect(structure.Spec.ConfigValues["a"]).To(Equal(FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(FromInt64(1)))
-			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(contractorv1.FromInt64(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 		})
 	})
@@ -488,22 +454,14 @@ var _ = Describe("Structure Webhook", func() {
 	Context("When changing Structure under Validating Webhook", func() {
 		It("Should fall through with valid values, and nothing changing", func() {
 			By("ValidateUpdate Setup")
-			oldStructure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			oldStructure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        123,
 					BluePrint: "test-structure-base",
 				},
 			}
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        123,
 					BluePrint: "test-structure-base",
 				},
@@ -524,7 +482,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateUpdate")
-			warn, err := structure.ValidateUpdate(oldStructure)
+			warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).To(BeNil())
 
@@ -537,22 +495,14 @@ var _ = Describe("Structure Webhook", func() {
 
 		It("Should handle when required values are removed", func() {
 			By("ValidateUpdate Setup")
-			oldStructure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			oldStructure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        123,
 					BluePrint: "test-structure-base",
 				},
 			}
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{},
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{},
 			}
 
 			doGetStructure.Times(0)
@@ -570,7 +520,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateUpdate")
-			warn, err := structure.ValidateUpdate(oldStructure)
+			warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).ToNot(BeNil())
 			Expect(err.Error()).To(Equal("[ID not specified, blueprint not specified, can not change the ID, can not change the BluePrint while not in 'Planned' State]"))
@@ -584,22 +534,14 @@ var _ = Describe("Structure Webhook", func() {
 
 		It("Should handle when required values are invalid", func() {
 			By("ValidateUpdate Setup")
-			oldStructure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			oldStructure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        123,
 					BluePrint: "test-structure-base",
 				},
 			}
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{
 					ID:        54321,
 					BluePrint: "not-right",
 				},
@@ -620,7 +562,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateUpdate")
-			warn, err := structure.ValidateUpdate(oldStructure)
+			warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).ToNot(BeNil())
 			Expect(err.Error()).To(Equal("[structure not found, blueprint not found, can not change the ID, can not change the BluePrint while not in 'Planned' State]"))
@@ -635,29 +577,21 @@ var _ = Describe("Structure Webhook", func() {
 
 	It("Can only change blueprint when state is planned", func() {
 		By("ValidateUpdate Setup")
-		oldStructure := &Structure{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespaceName,
-			},
-			Spec: StructureSpec{
+		oldStructure := &contractorv1.Structure{
+			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "old-test-structure-base",
 			},
-			Status: StructureStatus{
+			Status: contractorv1.StructureStatus{
 				State: "planned",
 			},
 		}
-		structure := &Structure{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespaceName,
-			},
-			Spec: StructureSpec{
+		structure := &contractorv1.Structure{
+			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
 			},
-			Status: StructureStatus{
+			Status: contractorv1.StructureStatus{
 				State: "planned",
 			},
 		}
@@ -677,7 +611,7 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.State).To(Equal(""))
 
 		By("Call ValidateUpdate")
-		warn, err := structure.ValidateUpdate(oldStructure)
+		warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -687,7 +621,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Spec.State = "built"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -697,7 +631,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Spec.State = "planned"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -707,7 +641,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Spec.State = "planned"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
@@ -716,7 +650,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Spec.State = "built"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -728,7 +662,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Status.State = "built"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -740,7 +674,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Status.State = "planned"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -752,7 +686,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Status.State = "built"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
@@ -764,7 +698,7 @@ var _ = Describe("Structure Webhook", func() {
 		oldStructure.Status.State = "planned"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
@@ -777,31 +711,23 @@ var _ = Describe("Structure Webhook", func() {
 
 	It("Can only change blueprint when there is no job", func() {
 		By("ValidateUpdate Setup")
-		oldStructure := &Structure{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespaceName,
-			},
-			Spec: StructureSpec{
+		oldStructure := &contractorv1.Structure{
+			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "old-test-structure-base",
 				State:     "planned",
 			},
-			Status: StructureStatus{
+			Status: contractorv1.StructureStatus{
 				State: "planned",
 			},
 		}
-		structure := &Structure{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespaceName,
-			},
-			Spec: StructureSpec{
+		structure := &contractorv1.Structure{
+			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
 				State:     "planned",
 			},
-			Status: StructureStatus{
+			Status: contractorv1.StructureStatus{
 				State: "planned",
 			},
 		}
@@ -821,23 +747,23 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.State).To(Equal("planned"))
 
 		By("Call ValidateUpdate")
-		warn, err := structure.ValidateUpdate(oldStructure)
+		warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
-		structure.Status.Job = &JobStatus{}
+		structure.Status.Job = &contractorv1.JobStatus{}
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while there is a Job"))
 
-		structure.Status.Job = &JobStatus{}
-		oldStructure.Status.Job = &JobStatus{}
+		structure.Status.Job = &contractorv1.JobStatus{}
+		oldStructure.Status.Job = &contractorv1.JobStatus{}
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while there is a Job"))
@@ -845,7 +771,7 @@ var _ = Describe("Structure Webhook", func() {
 		structure.Status.Job = nil
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the BluePrint while there is a Job"))
@@ -859,31 +785,23 @@ var _ = Describe("Structure Webhook", func() {
 
 	It("Can only change requested state when there is no job", func() {
 		By("ValidateUpdate Setup")
-		oldStructure := &Structure{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespaceName,
-			},
-			Spec: StructureSpec{
+		oldStructure := &contractorv1.Structure{
+			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
 				State:     "planned",
 			},
-			Status: StructureStatus{
+			Status: contractorv1.StructureStatus{
 				State: "planned",
 			},
 		}
-		structure := &Structure{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespaceName,
-			},
-			Spec: StructureSpec{
+		structure := &contractorv1.Structure{
+			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
 				State:     "built",
 			},
-			Status: StructureStatus{
+			Status: contractorv1.StructureStatus{
 				State: "planned",
 			},
 		}
@@ -903,23 +821,23 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.State).To(Equal("built"))
 
 		By("Call ValidateUpdate")
-		warn, err := structure.ValidateUpdate(oldStructure)
+		warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
-		structure.Status.Job = &JobStatus{}
+		structure.Status.Job = &contractorv1.JobStatus{}
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the State while there is a Job"))
 
-		structure.Status.Job = &JobStatus{}
-		oldStructure.Status.Job = &JobStatus{}
+		structure.Status.Job = &contractorv1.JobStatus{}
+		oldStructure.Status.Job = &contractorv1.JobStatus{}
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the State while there is a Job"))
@@ -927,7 +845,7 @@ var _ = Describe("Structure Webhook", func() {
 		structure.Status.Job = nil
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).ToNot(BeNil())
 		Expect(err.Error()).To(Equal("can not change the State while there is a Job"))
@@ -937,29 +855,29 @@ var _ = Describe("Structure Webhook", func() {
 		structure.Status.State = "built"
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
-		structure.Status.Job = &JobStatus{}
+		structure.Status.Job = &contractorv1.JobStatus{}
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
-		structure.Status.Job = &JobStatus{}
-		oldStructure.Status.Job = &JobStatus{}
+		structure.Status.Job = &contractorv1.JobStatus{}
+		oldStructure.Status.Job = &contractorv1.JobStatus{}
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
 		structure.Status.Job = nil
 
 		By("Call ValidateUpdate")
-		warn, err = structure.ValidateUpdate(oldStructure)
+		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
 		Expect(warn).To(BeNil())
 		Expect(err).To(BeNil())
 
@@ -973,12 +891,8 @@ var _ = Describe("Structure Webhook", func() {
 	Context("When deleting strusture", func() {
 		It("Just fall through for now", func() {
 			By("ValidateDelete Setup")
-			structure := &Structure{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespaceName,
-				},
-				Spec: StructureSpec{},
+			structure := &contractorv1.Structure{
+				Spec: contractorv1.StructureSpec{},
 			}
 
 			doGetStructure.Times(0)
@@ -996,7 +910,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateDelete")
-			warn, err := structure.ValidateDelete()
+			warn, err := validator.ValidateDelete(ctx, structure)
 			Expect(warn).To(BeNil())
 			Expect(err).To(BeNil())
 

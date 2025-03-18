@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.17.2
   name: structures.contractor.t3kton.com
 spec:
   group: contractor.t3kton.com
@@ -66,19 +66,23 @@ spec:
                     keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
                     and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
-                    arrayVal:
+                    array:
                       x-kubernetes-preserve-unknown-fields: true
-                    floatVal:
-                      type: number
-                    intVal:
+                    boolean:
+                      type: boolean
+                    float:
+                      type: string
+                    int:
                       format: int64
                       type: integer
-                    mapVal:
+                    map:
                       x-kubernetes-preserve-unknown-fields: true
-                    strVal:
+                    string:
                       type: string
                     type:
                       type: string
+                  required:
+                  - type
                   type: object
                 type: object
               consumerRef:
@@ -97,7 +101,6 @@ spec:
                       the event) or if no container name is specified "spec.containers[2]" (container with
                       index 2 in this pod). This syntax is chosen only to have some well-defined way of
                       referencing a part of an object.
-                      TODO: this design is not final and this field is subject to change in the future.
                     type: string
                   kind:
                     description: |-
@@ -142,6 +145,8 @@ spec:
                 - planned
                 - built
                 type: string
+            required:
+            - id
             type: object
           status:
             description: StructureStatus defines the observed state of the Structure
@@ -154,19 +159,23 @@ spec:
                     keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
                     and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
-                    arrayVal:
+                    array:
                       x-kubernetes-preserve-unknown-fields: true
-                    floatVal:
-                      type: number
-                    intVal:
+                    boolean:
+                      type: boolean
+                    float:
+                      type: string
+                    int:
                       format: int64
                       type: integer
-                    mapVal:
+                    map:
                       x-kubernetes-preserve-unknown-fields: true
-                    strVal:
+                    string:
                       type: string
                     type:
                       type: string
+                  required:
+                  - type
                   type: object
                 type: object
               foundation:

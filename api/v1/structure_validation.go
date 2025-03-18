@@ -27,7 +27,8 @@ import (
 
 var config_name_regex = regexp.MustCompile(`^[<>\-~]?[a-zA-Z0-9][a-zA-Z0-9_\-]*(:[a-zA-Z0-9]+)?$`)
 
-func (s *Structure) validateStructure(ctx context.Context, client *client.Contractor) []error {
+// ValidateStructure Validates that the structure is valid
+func (s *Structure) ValidateStructure(ctx context.Context, client *client.Contractor) []error {
 	var errs []error
 
 	if s.Spec.ID == 0 {
@@ -39,14 +40,12 @@ func (s *Structure) validateStructure(ctx context.Context, client *client.Contra
 		}
 	}
 
-	if s.Spec.BluePrint == "" {
+	if s.Spec.BluePrint == "" { // TODO: We need to make sure the blueprint is valid for the foundation/structure combination also
 		errs = append(errs, fmt.Errorf("blueprint not specified"))
 	} else {
 		_, err := client.BlueprintStructureBluePrintGet(ctx, s.Spec.BluePrint)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("blueprint not found"))
-		} else if s.Spec.BluePrint != "test-structure-base" {
-			errs = append(errs, fmt.Errorf("invalid blueprint"))
 		}
 	}
 
@@ -57,10 +56,11 @@ func (s *Structure) validateStructure(ctx context.Context, client *client.Contra
 	return errs
 }
 
-func (s *Structure) validateChanges(ctx context.Context, client *client.Contractor, old *Structure) []error {
+// ValidateChanges validates that changes happening to the structure are valid
+func (s *Structure) ValidateChanges(ctx context.Context, client *client.Contractor, old *Structure) []error {
 	var errs []error
 
-	if err := s.validateStructure(ctx, client); err != nil {
+	if err := s.ValidateStructure(ctx, client); err != nil {
 		errs = append(errs, err...)
 	}
 

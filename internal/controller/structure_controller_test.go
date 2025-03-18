@@ -27,7 +27,6 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	contractorClient "github.com/t3kton/contractor_goclient"
@@ -198,7 +197,6 @@ var _ = Describe("Structure Controller", func() {
 		})
 
 		It("should successfully handle incomplete information", func() {
-			// this will just bail with a 60 second re-queue
 			By("creating the custom resource for the Kind Structure")
 			req := reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -207,7 +205,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			By("Reconciling the before structure is made resource")
@@ -220,7 +217,7 @@ var _ = Describe("Structure Controller", func() {
 					Name:      resourceName,
 					Namespace: namespaceName,
 				},
-				Spec: contractorv1.StructureSpec{},
+				Spec: contractorv1.StructureSpec{ID: 42},
 			}
 			Expect(k8sClient.Create(ctx, structure)).To(Succeed())
 			defer func() {
@@ -236,10 +233,11 @@ var _ = Describe("Structure Controller", func() {
 			doCreateCall.Times(0)
 			doDestroyCall.Times(0)
 
-			By("Reconciling the empty resource")
-			result, err = controllerReconciler.Reconcile(ctx, req)
-			Expect(err).To(MatchError("ID Not Specified"))
-			Expect(result.IsZero()).To(Equal(true))
+			// For now this is not testable b/c the structure spec does not allow ID to be 0
+			// By("Reconciling the empty resource")
+			// result, err = controllerReconciler.Reconcile(ctx, req)
+			// Expect(err).To(MatchError("ID Not Specified"))
+			// Expect(result.IsZero()).To(Equal(true))
 
 			By("Reconciling the created resource with only ID")
 			// still missing target state and blueprint
@@ -278,7 +276,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockJobID = 0
@@ -345,7 +342,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockStructure.State = cinp.StringAddr("built")
@@ -423,7 +419,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockStructureState = "planned"
@@ -546,7 +541,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockStructureState = "built"
@@ -669,7 +663,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockStructureState = "planned"
@@ -768,7 +761,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockStructureState = "built"
@@ -869,7 +861,6 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				Log:    ctrl.Log.WithName("StructureReconciler"),
 			}
 
 			mockStructureState = "planned"

@@ -7,7 +7,7 @@
 ## Getting Started
 
 ### Prerequisites
-- go version v1.21.0+
+- go version v1.23.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
@@ -19,8 +19,8 @@
 make docker-build docker-push IMG=<some-registry>/kubernetes:tag
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified. 
-And it is required to have access to pull the image from the working environment. 
+**NOTE:** This image ought to be published in the personal registry you specified.
+And it is required to have access to pull the image from the working environment.
 Make sure you have the proper permission to the registry if the above commands don’t work.
 
 **Install the CRDs into the cluster:**
@@ -35,7 +35,7 @@ make install
 make deploy IMG=<some-registry>/kubernetes:tag
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin 
+> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
 privileges or be logged in as admin.
 
 **Create instances of your solution**
@@ -68,7 +68,9 @@ make undeploy
 
 ## Project Distribution
 
-Following are the steps to build the installer and distribute this project to users.
+Following the options to release and provide this solution to the users.
+
+### By providing a bundle with all YAML files
 
 1. Build the installer for the image built and published in the registry:
 
@@ -76,18 +78,37 @@ Following are the steps to build the installer and distribute this project to us
 make build-installer IMG=<some-registry>/kubernetes:tag
 ```
 
-NOTE: The makefile target mentioned above generates an 'install.yaml'
+**NOTE:** The makefile target mentioned above generates an 'install.yaml'
 file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without
-its dependencies.
+with Kustomize, which are necessary to install this project without its
+dependencies.
 
 2. Using the installer
 
-Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
+Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
+the project, i.e.:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/<org>/kubernetes/<tag or branch>/dist/install.yaml
 ```
+
+### By providing a Helm Chart
+
+1. Build the chart using the optional helm plugin
+
+```sh
+kubebuilder edit --plugins=helm/v1-alpha
+```
+
+2. See that a chart was generated under 'dist/chart', and users
+can obtain this solution from there.
+
+**NOTE:** If you change the project, you need to update the Helm Chart
+using the same command above to sync the latest changes. Furthermore,
+if you create webhooks, you need to use the above command with
+the '--force' flag and manually ensure that any custom configuration
+previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
+is manually re-applied afterwards.
 
 ## Contributing
 // TODO(user): Add detailed information on how you would like others to contribute to this project
@@ -98,7 +119,7 @@ More information can be found via the [Kubebuilder Documentation](https://book.k
 
 ## License
 
-Copyright 2024.
+Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -121,10 +142,10 @@ mkdir -p /tmp/k8s-webhook-server/serving-certs
 openssl req -x509 -newkey rsa:4096 -keyout /tmp/k8s-webhook-server/serving-certs/tls.key -out /tmp/k8s-webhook-server/serving-certs/tls.crt -sha256 -days 3650 -nodes -subj "/C=NA/ST=NA/L=NA/O=NA/OU=NA/CN=NA"
 
 kind create cluster
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml
 make install
 
-make undeploy ; set +x ; export VER=0.0.9 ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
+make undeploy ; set +x ; export VER=0.0.10 ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
 make run
 
 kubectl create -f config/samples/contractor_v1_structure.yaml

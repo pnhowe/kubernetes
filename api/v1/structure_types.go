@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ type StructureSpec struct {
 	// +kubebuilder:validation:Optional
 	Other intstr.IntOrString `json:"other,omitempty"`
 	//
-	// utility job name, can only be shen when state == built and not job
+	// utility job name, can only be when when state == built and not job
 }
 
 // StructureStatus defines the observed state of the Structure

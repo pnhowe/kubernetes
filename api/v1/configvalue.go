@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -22,19 +23,21 @@ type ConfigValue struct {
 	// +kubebuilder:validation:Required
 	Type ConfigValueType `json:"type,omitempty"`
 	// +kubebuilder:validation:Optional
-	IntVal int64 `json:"intVal,omitempty"`
+	BooleanVal bool `json:"boolean,omitempty"`
 	// +kubebuilder:validation:Optional
-	FloatVal float64 `json:"floatVal,omitempty"`
+	IntegerVal int64 `json:"int,omitempty"`
 	// +kubebuilder:validation:Optional
-	StrVal string `json:"strVal,omitempty"`
+	FloatVal string `json:"float,omitempty"`
+	// +kubebuilder:validation:Optional
+	StringVal string `json:"string,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:Optional
-	ArrayVal []ConfigValue `json:"arrayVal,omitempty"`
+	ArrayVal []ConfigValue `json:"array,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:Optional
-	MapVal map[string]ConfigValue `json:"mapVal,omitempty"`
+	MapVal map[string]ConfigValue `json:"map,omitempty"`
 }
 
 // // +kubebuilder:validation:Type=object
@@ -52,12 +55,13 @@ type ConfigValue struct {
 type ConfigValueType string
 
 const (
-	Nil    ConfigValueType = "" // nil must have an empty type, that way new non-initilized values are nil and not undefined
-	Int    ConfigValueType = "int"
-	Float  ConfigValueType = "float"
-	String ConfigValueType = "string"
-	Array  ConfigValueType = "array"
-	Map    ConfigValueType = "map"
+	Nil     ConfigValueType = "" // nil must have an empty type, that way new non-initilized values are nil and not undefined
+	Integer ConfigValueType = "int"
+	Boolean ConfigValueType = "bool"
+	Float   ConfigValueType = "float"
+	String  ConfigValueType = "string"
+	Array   ConfigValueType = "array"
+	Map     ConfigValueType = "map"
 )
 
 // type ConfigValueType uint8
@@ -110,22 +114,24 @@ func FromInterface(val interface{}) ConfigValue {
 	case nil:
 		return ConfigValue{Type: Nil}
 	case int:
-		return ConfigValue{Type: Int, IntVal: int64(v)}
+		return ConfigValue{Type: Integer, IntegerVal: int64(v)}
 	case int32:
-		return ConfigValue{Type: Int, IntVal: int64(v)}
+		return ConfigValue{Type: Integer, IntegerVal: int64(v)}
 	case int64:
-		return ConfigValue{Type: Int, IntVal: v}
+		return ConfigValue{Type: Integer, IntegerVal: v}
+	case bool:
+		return ConfigValue{Type: Boolean, BooleanVal: v}
 	case float32:
-		return ConfigValue{Type: Float, FloatVal: float64(v)}
+		return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(float64(v), 'g', -1, 32)}
 	case float64:
-		return ConfigValue{Type: Float, FloatVal: v}
+		return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(v, 'g', -1, 64)}
 	case []ConfigValue:
 		return ConfigValue{Type: Array, ArrayVal: v}
 	case map[string]ConfigValue:
 		return ConfigValue{Type: Map, MapVal: v}
 	}
 
-	return ConfigValue{Type: String, StrVal: val.(string)}
+	return ConfigValue{Type: String, StringVal: val.(string)}
 }
 
 func (c *ConfigValue) ToInterface() interface{} {
@@ -136,12 +142,14 @@ func (c *ConfigValue) ToInterface() interface{} {
 	switch c.Type {
 	case Nil:
 		return nil
-	case Int:
-		return c.IntVal
+	case Integer:
+		return c.IntegerVal
+	case Boolean:
+		return c.BooleanVal
 	case Float:
 		return c.FloatVal
 	case String:
-		return c.StrVal
+		return c.StringVal
 	case Array:
 		interface_list := make([]interface{}, len(c.ArrayVal))
 		for k, v := range c.ArrayVal {
@@ -166,37 +174,50 @@ func FromNil() ConfigValue {
 
 // FromInt creates an ConfigValue object with an int value.
 func FromInt(val int) ConfigValue {
-	return ConfigValue{Type: Int, IntVal: int64(val)}
+	return ConfigValue{Type: Integer, IntegerVal: int64(val)}
 }
 
 // FromInt32 creates an ConfigValue object with an int value.
 func FromInt32(val int32) ConfigValue {
-	return ConfigValue{Type: Int, IntVal: int64(val)}
+	return ConfigValue{Type: Integer, IntegerVal: int64(val)}
 }
 
 // FromInt64 creates an ConfigValue object with an int value.
 func FromInt64(val int64) ConfigValue {
-	return ConfigValue{Type: Int, IntVal: val}
+	return ConfigValue{Type: Integer, IntegerVal: val}
+}
+
+// FromBoolean creates an ConfigValue object with an int value.
+func FromBoolean(val bool) ConfigValue {
+	return ConfigValue{Type: Boolean, BooleanVal: val}
 }
 
 // FromFloat creates an ConfigValue object with an float value.
 func FromFloat32(val float32) ConfigValue {
-	return ConfigValue{Type: Float, FloatVal: float64(val)}
+	return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(float64(val), 'g', -1, 32)}
 }
 
 // FromFloat64 creates an ConfigValue object with an float value.
 func FromFloat64(val float64) ConfigValue {
-	return ConfigValue{Type: Float, FloatVal: val}
+	return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(val, 'g', -1, 64)}
 }
 
 // FromString creates an ConfigValue object with a string value.
 func FromString(val string) ConfigValue {
-	return ConfigValue{Type: String, StrVal: val}
+	return ConfigValue{Type: String, StringVal: val}
 }
 
 // FromSlice creates an ConfigValue object with a slice value.
 func FromSlice(val []ConfigValue) ConfigValue {
 	return ConfigValue{Type: Array, ArrayVal: val}
+}
+
+// FloatValAsFloat returns the float value as a float, returns error if not a float value
+func (c *ConfigValue) FloatValAsFloat() (float64, error) {
+	if c.Type == Float {
+		return strconv.ParseFloat(c.FloatVal, 64)
+	}
+	return 0, fmt.Errorf("Not a Float Value")
 }
 
 // // Unmarshal implements the yaml.Unmarshaller interface.
@@ -321,12 +342,14 @@ func (c *ConfigValue) String() string {
 	switch c.Type {
 	case Nil:
 		return ""
-	case Int:
-		return strconv.FormatInt(c.IntVal, 10)
+	case Integer:
+		return strconv.FormatInt(c.IntegerVal, 10)
+	case Boolean:
+		return strconv.FormatBool(c.BooleanVal)
 	case Float:
-		return strconv.FormatFloat(c.FloatVal, 'f', -1, 64)
+		return c.FloatVal
 	case String:
-		return c.StrVal
+		return c.StringVal
 	case Array:
 		string_list := make([]string, len(c.ArrayVal))
 		for k, v := range c.ArrayVal {
@@ -351,12 +374,14 @@ func (c ConfigValue) DeepCopy() *ConfigValue {
 	switch c.Type {
 	case Nil:
 		//
-	case Int:
-		copy.IntVal = c.IntVal
+	case Integer:
+		copy.IntegerVal = c.IntegerVal
+	case Boolean:
+		copy.BooleanVal = c.BooleanVal
 	case Float:
 		copy.FloatVal = c.FloatVal
 	case String:
-		copy.StrVal = c.StrVal
+		copy.StringVal = c.StringVal
 	case Array:
 		copy.ArrayVal = make([]ConfigValue, len(c.ArrayVal))
 		for key, val := range c.ArrayVal {

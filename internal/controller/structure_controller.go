@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"t3kton.com/pkg/contractor"
 
 	"github.com/google/go-cmp/cmp"
@@ -45,19 +46,18 @@ import (
 // StructureReconciler reconciles a Structure object
 type StructureReconciler struct {
 	client.Client
-	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/finalizers,verbs=update
+// +kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/finalizers,verbs=update
 
 // For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.0/pkg/reconcile
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.2/pkg/reconcile
 func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("structure", req.NamespacedName)
-	log.Info("Reconciling Structure", "request", req)
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling Structure", "request", req)
 
 	var structure contractorv1.Structure
 
@@ -71,40 +71,41 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	fmt.Printf("spec: %+v\n", structure.Spec)
 	fmt.Printf("configvalues: %+v\n", structure.Spec.ConfigValues)
 
+	// This should never happen, but just incase
 	if structure.Spec.ID == 0 {
-		log.Info("ID must be specified")
+		logger.Info("ID must be specified")
 		return ctrl.Result{}, fmt.Errorf("ID Not Specified")
 	}
 
 	if (structure.Spec.State == "") || (structure.Spec.BluePrint == "") {
-		log.Info("Structure is not fully defined")
+		logger.Info("Structure is not fully defined")
 		//return ctrl.Result{Requeue: true}, nil // wait for the State and BluePrint to be defined, TODO: do we need to requeue here? will this enitiy get auto-requeued when the spec is updated?
 		return ctrl.Result{}, fmt.Errorf("Structure is not fully defined")
 	}
 
 	client := contractor.GetClient(ctx)
 
-	log.Info("Getting Structure", "id", structure.Spec.ID)
+	logger.Info("Getting Structure", "id", structure.Spec.ID)
 	t3kton_structure, err := client.BuildingStructureGet(ctx, structure.Spec.ID)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "get structure faild")
 	}
 
 	status := contractorv1.StructureStatus{}
-	err = updateStatus(ctx, log, client, t3kton_structure, &status)
+	err = updateStatus(ctx, logger, client, t3kton_structure, &status)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "update status faild")
 	}
 
 	// See if an existing job has finished
 	if structure.Status.Job != nil && status.Job == nil {
-		r.publishEvent(ctx, log, &structure, "JobFinished", "Job '"+structure.Status.Job.Script+"' Finished")
+		r.publishEvent(ctx, logger, &structure, "JobFinished", "Job '"+structure.Status.Job.Script+"' Finished")
 
 		structure.Status.Job = nil
 		err = r.Status().Update(ctx, &structure)
 		fmt.Println("Job Done update err:", err)
 		if apierrors.IsConflict(err) {
-			log.Info("Structure Changed on us, will try again")
+			logger.Info("Structure Changed on us, will try again")
 			return ctrl.Result{Requeue: true}, nil
 		}
 
@@ -117,12 +118,12 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// it is, update our copy and requeue
 		fmt.Println("-- Status Diff --")
 		fmt.Println(diff)
-		log.Info("Status Changed", "diff", diff)
+		logger.Info("Status Changed", "diff", diff)
 		status.DeepCopyInto(&structure.Status)
 		err = r.Status().Update(ctx, &structure)
 		fmt.Println("Status Update err:", err)
 		if apierrors.IsConflict(err) {
-			log.Info("Structure Changed on us, will try again")
+			logger.Info("Structure Changed on us, will try again")
 			return ctrl.Result{Requeue: true}, nil
 		}
 
@@ -130,7 +131,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, errors.Wrap(err, "update status faild")
 		}
 
-		r.publishEvent(ctx, log, &structure, "StatusChanged", "status changed")
+		r.publishEvent(ctx, logger, &structure, "StatusChanged", "status changed")
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -151,14 +152,14 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		tmp_ConfigValues := structure.Spec.ConfigValues.ToInterface()
 		tmp_structure.ConfigValues = &tmp_ConfigValues
 		tmp_structure.Update(ctx)
-		log.Info("ConfigValues updated")
+		logger.Info("ConfigValues updated")
 		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Wait for the job to be cleared up and the state to be set
 	if (structure.Status.State == structure.Spec.State) && (structure.Status.BluePrint == structure.Spec.BluePrint) {
-		r.publishEvent(ctx, log, &structure, "ReconcileComplete", "reconcile complete")
-		log.Info("Reconciled Structure")
+		r.publishEvent(ctx, logger, &structure, "ReconcileComplete", "reconcile complete")
+		logger.Info("Reconciled Structure")
 		return ctrl.Result{}, nil
 	}
 
@@ -173,12 +174,12 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	fmt.Printf("**** Make that job *** %+v\n", jobName)
-	jobID, err := r.startJob(ctx, log, client, structure.Spec.ID, jobName)
+	jobID, err := r.startJob(ctx, logger, client, structure.Spec.ID, jobName)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "create job faild")
 	}
 	fmt.Printf("**** Job Created *** %+v\n", jobID)
-	r.publishEvent(ctx, log, &structure, "JobCreated", "job '"+jobName+"' created, ID:"+strconv.Itoa(jobID))
+	r.publishEvent(ctx, logger, &structure, "JobCreated", "job '"+jobName+"' created, ID:"+strconv.Itoa(jobID))
 	return ctrl.Result{Requeue: true}, nil
 }
 
@@ -187,6 +188,7 @@ func (r *StructureReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}). // TODO: rate limiter
 		For(&contractorv1.Structure{}).
+		Named("structure").
 		Complete(r)
 }
 
@@ -199,8 +201,8 @@ func (r *StructureReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // 	return r.Update(ctx, obj)
 // }
 
-func (r *StructureReconciler) startJob(ctx context.Context, log logr.Logger, client *cclient.Contractor, ID int, jobName string) (int, error) {
-	log.Info("job start", "structure", ID, "name", jobName)
+func (r *StructureReconciler) startJob(ctx context.Context, logger logr.Logger, client *cclient.Contractor, ID int, jobName string) (int, error) {
+	logger.Info("job start", "structure", ID, "name", jobName)
 	structure := client.BuildingStructureNewWithID(ID)
 
 	fmt.Println("_____________________ Start Job ____________________")
@@ -221,8 +223,8 @@ func (r *StructureReconciler) startJob(ctx context.Context, log logr.Logger, cli
 	return jobID, nil
 }
 
-func (r *StructureReconciler) publishEvent(ctx context.Context, log logr.Logger, structure *contractorv1.Structure, reason, message string) {
-	log.Info("Event", "reason", reason, "message", message)
+func (r *StructureReconciler) publishEvent(ctx context.Context, logger logr.Logger, structure *contractorv1.Structure, reason, message string) {
+	logger.Info("Event", "reason", reason, "message", message)
 	t := metav1.Now()
 
 	event := corev1.Event{
@@ -253,13 +255,13 @@ func (r *StructureReconciler) publishEvent(ctx context.Context, log logr.Logger,
 
 	err := r.Create(ctx, &event)
 	if err != nil {
-		log.Info("failed to record event, ignoring", "reason", reason, "message", message, "error", err)
+		logger.Info("failed to record event, ignoring", "reason", reason, "message", message, "error", err)
 	}
 }
 
-func updateStatus(ctx context.Context, log logr.Logger, client *cclient.Contractor, structure *cclient.BuildingStructure, status *contractorv1.StructureStatus) error {
+func updateStatus(ctx context.Context, logger logr.Logger, client *cclient.Contractor, structure *cclient.BuildingStructure, status *contractorv1.StructureStatus) error {
 
-	log.Info("Getting Foundation", "id", *structure.Foundation)
+	logger.Info("Getting Foundation", "id", *structure.Foundation)
 	foundation, err := client.BuildingFoundationGetURI(ctx, *structure.Foundation)
 	if err != nil {
 		return err
@@ -269,7 +271,7 @@ func updateStatus(ctx context.Context, log logr.Logger, client *cclient.Contract
 
 	updateFoundationStatus(foundation, status)
 
-	log.Info("Getting Job", "structure", structure.ID)
+	logger.Info("Getting Job", "structure", structure.ID)
 	jobURI, err := structure.CallGetJob(ctx)
 	if err != nil {
 		return err

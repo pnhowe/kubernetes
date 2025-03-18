@@ -37,7 +37,7 @@ webhooks:
       namespace: system
       path: /validate-contractor-t3kton-com-v1-structure
   failurePolicy: Fail
-  name: vstructure.kb.io
+  name: vstructure-v1.kb.io
   rules:
   - apiGroups:
     - contractor.t3kton.com
@@ -46,7 +46,6 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
-    - DELETE
     resources:
     - structures
   sideEffects: None
