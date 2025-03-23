@@ -51,7 +51,7 @@ func SetupStructureWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,groups=contractor.t3kton.com,resources=structures,verbs=create,versions=v1,name=vstructure.kb.io,sideEffects=None,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,groups=contractor.t3kton.com,resources=structures,verbs=create;update,versions=v1,name=vstructure.kb.io,sideEffects=None,admissionReviewVersions=v1
 
 // StructureCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Structure when those are created
@@ -61,6 +61,7 @@ type StructureCustomDefaulter struct {
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 // We will copy the State, BluePrint, and ConfigValues from contractor if they are blank
 func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	fmt.Println("--------------------------------------------------------------------- Defaulter called")
 	structure, ok := obj.(*contractorv1.Structure)
 	if !ok {
 		return fmt.Errorf("expected an Structure object but got %T", obj)
@@ -70,6 +71,13 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 
 	if structure.Spec.ID == 0 {
 		return fmt.Errorf("ID not set")
+	}
+
+	if structure.Spec.ConfigValues != nil {
+		// until the CRD it's self can enfoce which values are filled acodring to the type, we need to clean
+		// Also b/c of clean, "Defaulter" needs to be called on updates as well, when the CRD is figured out, remove
+		// "update" from the list of verbs for this webhook
+		structure.Spec.ConfigValues.Clean()
 	}
 
 	if structure.Spec.State != "" && structure.Spec.BluePrint != "" && structure.Spec.ConfigValues != nil {
@@ -100,7 +108,7 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		structurelog.Info("setting", "config values", *upstreamStructure.ConfigValues)
 		structure.Spec.ConfigValues = make(map[string]contractorv1.ConfigValue, len(*upstreamStructure.ConfigValues))
 		for key, val := range *upstreamStructure.ConfigValues {
-			structure.Spec.ConfigValues[key] = contractorv1.FromInterface(val)
+			structure.Spec.ConfigValues[key] = contractorv1.FromContractor(val)
 		}
 	}
 
@@ -112,9 +120,6 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-contractor-t3kton-com-v1-structure,mutating=false,failurePolicy=fail,sideEffects=None,groups=contractor.t3kton.com,resources=structures,verbs=create;update,versions=v1,name=vstructure-v1.kb.io,admissionReviewVersions=v1
 
-// StructureCustomValidator struct is responsible for validating the Structure resource
-// when it is created, updated, or deleted.
-//
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type StructureCustomValidator struct {

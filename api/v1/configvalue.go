@@ -8,28 +8,53 @@ import (
 
 type ConfigValues map[string]ConfigValue
 
-func (c *ConfigValues) ToInterface() map[string]interface{} {
+func (c *ConfigValues) ToContractor() map[string]interface{} {
 	result := map[string]interface{}{}
 	for k, v := range *c {
-		result[k] = v.ToInterface()
+		result[k] = v.ToContractor()
 	}
 	return result
+}
+
+func (c *ConfigValues) Clean() {
+	fmt.Println("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Clean it!!!")
+	for _, v := range *c {
+		v.Clean()
+	}
+}
+
+// ValuesFromContractor
+func ValuesFromContractor(val map[string]interface{}) ConfigValues {
+	if len(val) == 0 {
+		return map[string]ConfigValue{}
+	}
+
+	cs := make(map[string]ConfigValue, len(val))
+
+	for k, v := range val {
+		cs[k] = FromContractor(v)
+	}
+
+	return cs
 }
 
 // keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
 // and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
 // +kubebuilder:object:generate=false
 type ConfigValue struct {
-	// +kubebuilder:validation:Required
-	Type ConfigValueType `json:"type,omitempty"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:default=nil
+	// +kubebuilder:validation:Enum=nil;number;bool;string;array;map
+	Type ConfigValueType `json:"type"`
 	// +kubebuilder:validation:Optional
 	BooleanVal bool `json:"boolean,omitempty"`
 	// +kubebuilder:validation:Optional
-	IntegerVal int64 `json:"int,omitempty"`
-	// +kubebuilder:validation:Optional
-	FloatVal string `json:"float,omitempty"`
+	NumberVal string `json:"number,omitempty"`
 	// +kubebuilder:validation:Optional
 	StringVal string `json:"string,omitempty"`
+	// // +kubebuilder:validation:Schemaless
+	// // +kubebuilder:validation:Type=array
+	// // +kubebuilder:validation:items:Type=object
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:Optional
@@ -55,14 +80,56 @@ type ConfigValue struct {
 type ConfigValueType string
 
 const (
-	Nil     ConfigValueType = "" // nil must have an empty type, that way new non-initilized values are nil and not undefined
-	Integer ConfigValueType = "int"
+	Nil     ConfigValueType = "nil"
+	Number  ConfigValueType = "number"
 	Boolean ConfigValueType = "bool"
-	Float   ConfigValueType = "float"
 	String  ConfigValueType = "string"
 	Array   ConfigValueType = "array"
 	Map     ConfigValueType = "map"
 )
+
+// Clean make sure the struct dosen't have extra junk in it, tends to mess up the reconcile loop
+func (c *ConfigValue) Clean() {
+	switch c.Type {
+	case Nil:
+		c.BooleanVal = false
+		c.NumberVal = ""
+		c.StringVal = ""
+		c.ArrayVal = nil
+		c.MapVal = nil
+	case Boolean:
+		c.NumberVal = ""
+		c.StringVal = ""
+		c.ArrayVal = nil
+		c.MapVal = nil
+	case Number:
+		c.BooleanVal = false
+		c.StringVal = ""
+		c.ArrayVal = nil
+		c.MapVal = nil
+	case String:
+		c.BooleanVal = false
+		c.NumberVal = ""
+		c.ArrayVal = nil
+		c.MapVal = nil
+	case Array:
+		c.BooleanVal = false
+		c.NumberVal = ""
+		c.StringVal = ""
+		c.MapVal = nil
+		for i := range c.ArrayVal {
+			c.ArrayVal[i].Clean()
+		}
+	case Map:
+		c.BooleanVal = false
+		c.NumberVal = ""
+		c.StringVal = ""
+		c.ArrayVal = nil
+		for _, v := range c.MapVal {
+			v.Clean()
+		}
+	}
+}
 
 // type ConfigValueType uint8
 
@@ -108,33 +175,63 @@ const (
 // 	return nil
 // }
 
-// FromInterface creates an ConfigValue from interface{}
-func FromInterface(val interface{}) ConfigValue {
+// FromContractor creates an ConfigValue from the interface{} from the JSON decode from contractor
+func FromContractor(val interface{}) ConfigValue {
 	switch v := val.(type) {
 	case nil:
 		return ConfigValue{Type: Nil}
-	case int:
-		return ConfigValue{Type: Integer, IntegerVal: int64(v)}
-	case int32:
-		return ConfigValue{Type: Integer, IntegerVal: int64(v)}
-	case int64:
-		return ConfigValue{Type: Integer, IntegerVal: v}
 	case bool:
 		return ConfigValue{Type: Boolean, BooleanVal: v}
+	case int:
+		return ConfigValue{Type: Number, NumberVal: strconv.FormatInt(int64(v), 10)}
+	case int32:
+		return ConfigValue{Type: Number, NumberVal: strconv.FormatInt(int64(v), 10)}
+	case int64:
+		return ConfigValue{Type: Number, NumberVal: strconv.FormatInt(v, 10)}
+	case string:
+		return ConfigValue{Type: String, StringVal: v}
 	case float32:
-		return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(float64(v), 'g', -1, 32)}
+		return ConfigValue{Type: Number, NumberVal: strconv.FormatFloat(float64(v), 'g', -1, 32)}
 	case float64:
-		return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(v, 'g', -1, 64)}
-	case []ConfigValue:
-		return ConfigValue{Type: Array, ArrayVal: v}
-	case map[string]ConfigValue:
-		return ConfigValue{Type: Map, MapVal: v}
+		return ConfigValue{Type: Number, NumberVal: strconv.FormatFloat(v, 'g', -1, 64)}
+	case []interface{}:
+		fmt.Println("{{{{{{{{{{{{{{{{{{{[[[]]]}}}}}}}}}}}}}}}}}}}")
+		fmt.Printf("%+v\n", val)
+		arrayval := make([]ConfigValue, len(v))
+		for i, v2 := range v {
+			arrayval[i] = FromContractor(v2)
+		}
+		fmt.Printf("%+v\n", arrayval)
+		return ConfigValue{Type: Array, ArrayVal: arrayval}
+	case map[string]interface{}:
+		mapval := make(map[string]ConfigValue, len(v))
+		for k, v2 := range v {
+			mapval[k] = FromContractor(v2)
+		}
+		return ConfigValue{Type: Map, MapVal: mapval}
 	}
 
-	return ConfigValue{Type: String, StringVal: val.(string)}
+	return ConfigValue{Type: Nil}
+	// strval := val.(string)
+
+	// // JSON dosen't know the difference between int and float, we will have to figure it out
+	// intval, err := strconv.ParseInt(strval, 10, 64)
+	// if err == nil {
+	// 	fmt.Printf("int %+v\n", intval)
+	// 	return ConfigValue{Type: Number, NumberVal: strconv.FormatInt(intval, 10)}
+	// }
+
+	// floatval, err := strconv.ParseFloat(strval, 64)
+	// if err == nil {
+	// 	fmt.Printf("float %+v\n", floatval)
+	// 	return ConfigValue{Type: Number, NumberVal: strconv.FormatFloat(floatval, 'g', -1, 64)}
+	// }
+
+	// return ConfigValue{Type: String, StringVal: strval}
 }
 
-func (c *ConfigValue) ToInterface() interface{} {
+// ToContractor formats a return value sutible for JSON encoding to Contractor
+func (c *ConfigValue) ToContractor() interface{} {
 	if c == nil {
 		return nil
 	}
@@ -142,24 +239,29 @@ func (c *ConfigValue) ToInterface() interface{} {
 	switch c.Type {
 	case Nil:
 		return nil
-	case Integer:
-		return c.IntegerVal
 	case Boolean:
 		return c.BooleanVal
-	case Float:
-		return c.FloatVal
+	case Number:
+		if v, err := strconv.ParseFloat(c.NumberVal, 64); err == nil {
+			return v
+		} else {
+			return 0
+		}
 	case String:
 		return c.StringVal
 	case Array:
-		interface_list := make([]interface{}, len(c.ArrayVal))
+		fmt.Println("}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}")
+		fmt.Printf("%+v\n", c)
+		arrayval := make([]interface{}, len(c.ArrayVal))
 		for k, v := range c.ArrayVal {
-			interface_list[k] = v.ToInterface()
+			arrayval[k] = v.ToContractor()
 		}
-		return interface_list
+		fmt.Printf("%+v\n", arrayval)
+		return arrayval
 	case Map:
 		interface_list := make(map[string]interface{}, len(c.MapVal))
 		for k, v := range c.MapVal {
-			interface_list[k] = v.ToInterface()
+			interface_list[k] = v.ToContractor()
 		}
 		return interface_list
 	}
@@ -172,34 +274,19 @@ func FromNil() ConfigValue {
 	return ConfigValue{Type: Nil}
 }
 
-// FromInt creates an ConfigValue object with an int value.
-func FromInt(val int) ConfigValue {
-	return ConfigValue{Type: Integer, IntegerVal: int64(val)}
-}
-
-// FromInt32 creates an ConfigValue object with an int value.
-func FromInt32(val int32) ConfigValue {
-	return ConfigValue{Type: Integer, IntegerVal: int64(val)}
-}
-
-// FromInt64 creates an ConfigValue object with an int value.
-func FromInt64(val int64) ConfigValue {
-	return ConfigValue{Type: Integer, IntegerVal: val}
-}
-
 // FromBoolean creates an ConfigValue object with an int value.
 func FromBoolean(val bool) ConfigValue {
 	return ConfigValue{Type: Boolean, BooleanVal: val}
 }
 
-// FromFloat creates an ConfigValue object with an float value.
-func FromFloat32(val float32) ConfigValue {
-	return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(float64(val), 'g', -1, 32)}
+// FromInt64 creates an ConfigValue object with an int value.
+func FromInt64(val int64) ConfigValue {
+	return ConfigValue{Type: Number, NumberVal: strconv.FormatInt(val, 10)}
 }
 
 // FromFloat64 creates an ConfigValue object with an float value.
 func FromFloat64(val float64) ConfigValue {
-	return ConfigValue{Type: Float, FloatVal: strconv.FormatFloat(val, 'g', -1, 64)}
+	return ConfigValue{Type: Number, NumberVal: strconv.FormatFloat(val, 'g', -1, 64)}
 }
 
 // FromString creates an ConfigValue object with a string value.
@@ -210,14 +297,6 @@ func FromString(val string) ConfigValue {
 // FromSlice creates an ConfigValue object with a slice value.
 func FromSlice(val []ConfigValue) ConfigValue {
 	return ConfigValue{Type: Array, ArrayVal: val}
-}
-
-// FloatValAsFloat returns the float value as a float, returns error if not a float value
-func (c *ConfigValue) FloatValAsFloat() (float64, error) {
-	if c.Type == Float {
-		return strconv.ParseFloat(c.FloatVal, 64)
-	}
-	return 0, fmt.Errorf("Not a Float Value")
 }
 
 // // Unmarshal implements the yaml.Unmarshaller interface.
@@ -342,12 +421,10 @@ func (c *ConfigValue) String() string {
 	switch c.Type {
 	case Nil:
 		return ""
-	case Integer:
-		return strconv.FormatInt(c.IntegerVal, 10)
 	case Boolean:
 		return strconv.FormatBool(c.BooleanVal)
-	case Float:
-		return c.FloatVal
+	case Number:
+		return c.NumberVal
 	case String:
 		return c.StringVal
 	case Array:
@@ -374,12 +451,10 @@ func (c ConfigValue) DeepCopy() *ConfigValue {
 	switch c.Type {
 	case Nil:
 		//
-	case Integer:
-		copy.IntegerVal = c.IntegerVal
 	case Boolean:
 		copy.BooleanVal = c.BooleanVal
-	case Float:
-		copy.FloatVal = c.FloatVal
+	case Number:
+		copy.NumberVal = c.NumberVal
 	case String:
 		copy.StringVal = c.StringVal
 	case Array:

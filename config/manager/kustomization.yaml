@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: contractor
-  newTag: 0.0.10
+  newTag: 0.0.21

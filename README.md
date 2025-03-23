@@ -145,7 +145,7 @@ kind create cluster
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml
 make install
 
-make undeploy ; set +x ; export VER=0.0.10 ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
+make undeploy ; set +x ; export VER=0.0.12 ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
 make run
 
 kubectl create -f config/samples/contractor_v1_structure.yaml

@@ -894,7 +894,7 @@ var _ = Describe("Structure Controller", func() {
 			By("Setting Config values")
 			structure.Spec.ConfigValues = contractorv1.ConfigValues{}
 			structure.Spec.ConfigValues["test"] = contractorv1.FromString("asdf")
-			structure.Spec.ConfigValues["test2"] = contractorv1.FromInt(42)
+			structure.Spec.ConfigValues["test2"] = contractorv1.FromInt64(42)
 			Expect(k8sClient.Update(ctx, structure)).To(Succeed())
 
 			By("Reconciling") // update config values

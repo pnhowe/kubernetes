@@ -5,6 +5,13 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
   - contractor.t3kton.com
   resources:
   - structures
@@ -16,12 +23,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - contractor.t3kton.com
-  resources:
-  - structures/finalizers
-  verbs:
-  - update
 - apiGroups:
   - contractor.t3kton.com
   resources:

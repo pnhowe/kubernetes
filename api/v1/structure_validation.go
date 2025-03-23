@@ -90,7 +90,7 @@ func (s *Structure) ValidateChanges(ctx context.Context, client *client.Contract
 	return errs
 }
 
-func validateConfigValues(configurationValues map[string]ConfigValue) error {
+func validateConfigValues(configurationValues ConfigValues) error {
 	for name := range configurationValues {
 		if !config_name_regex.MatchString(name) {
 			return fmt.Errorf("invalid configuration value name '%s'", name)

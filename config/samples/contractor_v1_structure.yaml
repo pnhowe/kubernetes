@@ -11,21 +11,12 @@ spec:
   blueprint: test-structure-base
   configValues:
     myval: 
-      type: "string"
-      string: "test"
-    myotherval: 
-      type: "int"
-      int: 2  
+      type: string
+      string: test
+      boolean: true
     valagain:
-      type: "array"
+      type: array
       array: 
-        - int: 10
-        - int: 15
-    mappingval:
-      type: "map"
-      map:
-        first:
-          int: 42
-        second:
-          string: "This is a test"
+        - type: string
+          string: asdfasdfa
 

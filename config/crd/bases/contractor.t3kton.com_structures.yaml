@@ -67,22 +67,28 @@ spec:
                     and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
                     array:
+                      description: |-
+                        // +kubebuilder:validation:Schemaless
+                        // +kubebuilder:validation:Type=array
+                        // +kubebuilder:validation:items:Type=object
                       x-kubernetes-preserve-unknown-fields: true
                     boolean:
                       type: boolean
-                    float:
-                      type: string
-                    int:
-                      format: int64
-                      type: integer
                     map:
                       x-kubernetes-preserve-unknown-fields: true
+                    number:
+                      type: string
                     string:
                       type: string
                     type:
+                      enum:
+                      - nil
+                      - number
+                      - bool
+                      - string
+                      - array
+                      - map
                       type: string
-                  required:
-                  - type
                   type: object
                 type: object
               consumerRef:
@@ -135,11 +141,6 @@ spec:
                 x-kubernetes-validations:
                 - message: Value is immutable
                   rule: self == oldSelf
-              other:
-                anyOf:
-                - type: integer
-                - type: string
-                x-kubernetes-int-or-string: true
               state:
                 enum:
                 - planned
@@ -160,22 +161,28 @@ spec:
                     and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
                     array:
+                      description: |-
+                        // +kubebuilder:validation:Schemaless
+                        // +kubebuilder:validation:Type=array
+                        // +kubebuilder:validation:items:Type=object
                       x-kubernetes-preserve-unknown-fields: true
                     boolean:
                       type: boolean
-                    float:
-                      type: string
-                    int:
-                      format: int64
-                      type: integer
                     map:
                       x-kubernetes-preserve-unknown-fields: true
+                    number:
+                      type: string
                     string:
                       type: string
                     type:
+                      enum:
+                      - nil
+                      - number
+                      - bool
+                      - string
+                      - array
+                      - map
                       type: string
-                  required:
-                  - type
                   type: object
                 type: object
               foundation:

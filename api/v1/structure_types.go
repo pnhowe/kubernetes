@@ -19,7 +19,6 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // StructureSpec defines the desired state of Structure
@@ -38,8 +37,6 @@ type StructureSpec struct {
 	// ConsumerRef can be used to store information about something that is using this structure.
 	// +kubebuilder:validation:Optional
 	ConsumerRef *corev1.ObjectReference `json:"consumerRef,omitempty"`
-	// +kubebuilder:validation:Optional
-	Other intstr.IntOrString `json:"other,omitempty"`
 	//
 	// utility job name, can only be when when state == built and not job
 }
