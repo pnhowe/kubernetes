@@ -51,7 +51,7 @@ func SetupStructureWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,groups=contractor.t3kton.com,resources=structures,verbs=create;update,versions=v1,name=vstructure.kb.io,sideEffects=None,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,groups=contractor.t3kton.com,resources=structures,verbs=create,versions=v1,name=vstructure.kb.io,sideEffects=None,admissionReviewVersions=v1
 
 // StructureCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Structure when those are created
@@ -71,13 +71,6 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 
 	if structure.Spec.ID == 0 {
 		return fmt.Errorf("ID not set")
-	}
-
-	if structure.Spec.ConfigValues != nil {
-		// until the CRD it's self can enfoce which values are filled acodring to the type, we need to clean
-		// Also b/c of clean, "Defaulter" needs to be called on updates as well, when the CRD is figured out, remove
-		// "update" from the list of verbs for this webhook
-		structure.Spec.ConfigValues.Clean()
 	}
 
 	if structure.Spec.State != "" && structure.Spec.BluePrint != "" && structure.Spec.ConfigValues != nil {
@@ -108,7 +101,7 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		structurelog.Info("setting", "config values", *upstreamStructure.ConfigValues)
 		structure.Spec.ConfigValues = make(map[string]contractorv1.ConfigValue, len(*upstreamStructure.ConfigValues))
 		for key, val := range *upstreamStructure.ConfigValues {
-			structure.Spec.ConfigValues[key] = contractorv1.FromContractor(val)
+			structure.Spec.ConfigValues[key] = contractorv1.ConfigValueFromContractor(val)
 		}
 	}
 

@@ -63,23 +63,9 @@ spec:
               configValues:
                 additionalProperties:
                   description: |-
-                    keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
-                    and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
+                    https://github.com/kubernetes-sigs/controller-tools/issues/461
+                    https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
-                    array:
-                      description: |-
-                        // +kubebuilder:validation:Schemaless
-                        // +kubebuilder:validation:Type=array
-                        // +kubebuilder:validation:items:Type=object
-                      x-kubernetes-preserve-unknown-fields: true
-                    boolean:
-                      type: boolean
-                    map:
-                      x-kubernetes-preserve-unknown-fields: true
-                    number:
-                      type: string
-                    string:
-                      type: string
                     type:
                       enum:
                       - nil
@@ -89,6 +75,10 @@ spec:
                       - array
                       - map
                       type: string
+                    value:
+                      type: string
+                  required:
+                  - value
                   type: object
                 type: object
               consumerRef:
@@ -157,23 +147,9 @@ spec:
               configValues:
                 additionalProperties:
                   description: |-
-                    keep an eye on https://github.com/kubernetes-sigs/controller-tools/issues/461, a union type would make the configValue less awarkward in the yaml
-                    and https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
+                    https://github.com/kubernetes-sigs/controller-tools/issues/461
+                    https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
                   properties:
-                    array:
-                      description: |-
-                        // +kubebuilder:validation:Schemaless
-                        // +kubebuilder:validation:Type=array
-                        // +kubebuilder:validation:items:Type=object
-                      x-kubernetes-preserve-unknown-fields: true
-                    boolean:
-                      type: boolean
-                    map:
-                      x-kubernetes-preserve-unknown-fields: true
-                    number:
-                      type: string
-                    string:
-                      type: string
                     type:
                       enum:
                       - nil
@@ -183,6 +159,10 @@ spec:
                       - array
                       - map
                       type: string
+                    value:
+                      type: string
+                  required:
+                  - value
                   type: object
                 type: object
               foundation:

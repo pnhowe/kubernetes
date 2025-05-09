@@ -255,7 +255,7 @@ func updateStructureStatus(structure *cclient.BuildingStructure, status *contrac
 	status.Hostname = *structure.Hostname
 	status.BluePrint = strings.Split(*structure.Blueprint, ":")[1]
 	status.Foundation = *structure.Foundation
-	status.ConfigValues = contractorv1.ValuesFromContractor(*structure.ConfigValues)
+	status.ConfigValues = contractorv1.ConfigValuesFromContractor(*structure.ConfigValues)
 }
 
 func updateFoundationStatus(foundation *cclient.BuildingFoundation, status *contractorv1.StructureStatus) {
