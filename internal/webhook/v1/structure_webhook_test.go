@@ -245,9 +245,9 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(3))
-			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.FromString("asdf")))
-			Expect(structure.Spec.ConfigValues["b"]).To(Equal(contractorv1.FromInt64(12)))
-			Expect(structure.Spec.ConfigValues["c"]).To(Equal(contractorv1.FromFloat64(2.1)))
+			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.NewConfigValue("asdf")))
+			Expect(structure.Spec.ConfigValues["b"]).To(Equal(contractorv1.NewConfigValue(12)))
+			Expect(structure.Spec.ConfigValues["c"]).To(Equal(contractorv1.NewConfigValue(2.1)))
 			Expect(structure.Spec.State).To(Equal("planned"))
 		})
 
@@ -258,7 +258,7 @@ var _ = Describe("Structure Webhook", func() {
 					ID:           123,
 					State:        "built",
 					BluePrint:    "structure-non-base",
-					ConfigValues: map[string]contractorv1.ConfigValue{"2": contractorv1.FromString("Bob")},
+					ConfigValues: map[string]contractorv1.ConfigValue{"2": contractorv1.NewConfigValue("Bob")},
 				},
 			}
 
@@ -274,7 +274,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("structure-non-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.FromString("Bob")))
+			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.NewConfigValue("Bob")))
 			Expect(structure.Spec.State).To(Equal("built"))
 
 			By("Call Default")
@@ -284,7 +284,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("structure-non-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.FromString("Bob")))
+			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.NewConfigValue("Bob")))
 			Expect(structure.Spec.State).To(Equal("built"))
 
 		})
@@ -367,7 +367,7 @@ var _ = Describe("Structure Webhook", func() {
 					ID:        123,
 					BluePrint: "test-structure-base",
 					ConfigValues: map[string]contractorv1.ConfigValue{
-						"a:>test": contractorv1.FromInt64(1),
+						"a:>test": contractorv1.NewConfigValue(1),
 					},
 				},
 			}
@@ -384,7 +384,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(contractorv1.NewConfigValue(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateCreate")
@@ -397,7 +397,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
-			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a:>test"]).To(Equal(contractorv1.NewConfigValue(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 		})
 
@@ -408,10 +408,10 @@ var _ = Describe("Structure Webhook", func() {
 					ID:        123,
 					BluePrint: "test-structure-base",
 					ConfigValues: map[string]contractorv1.ConfigValue{
-						"a":      contractorv1.FromInt64(1),
-						"a:test": contractorv1.FromInt64(1),
-						">test":  contractorv1.FromInt64(1),
-						"stuff":  contractorv1.FromInt64(1),
+						"a":      contractorv1.NewConfigValue(1),
+						"a:test": contractorv1.NewConfigValue(1),
+						">test":  contractorv1.NewConfigValue(1),
+						"stuff":  contractorv1.NewConfigValue(1),
 					},
 				},
 			}
@@ -428,10 +428,10 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(4))
-			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(contractorv1.FromInt64(1)))
-			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(contractorv1.FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.NewConfigValue(1)))
+			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(contractorv1.NewConfigValue(1)))
+			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(contractorv1.NewConfigValue(1)))
+			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(contractorv1.NewConfigValue(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 
 			By("Call ValidateCreate")
@@ -443,10 +443,10 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ID).To(Equal(123))
 			Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(4))
-			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(contractorv1.FromInt64(1)))
-			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(contractorv1.FromInt64(1)))
-			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(contractorv1.FromInt64(1)))
+			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.NewConfigValue(1)))
+			Expect(structure.Spec.ConfigValues["a:test"]).To(Equal(contractorv1.NewConfigValue(1)))
+			Expect(structure.Spec.ConfigValues[">test"]).To(Equal(contractorv1.NewConfigValue(1)))
+			Expect(structure.Spec.ConfigValues["stuff"]).To(Equal(contractorv1.NewConfigValue(1)))
 			Expect(structure.Spec.State).To(Equal(""))
 		})
 	})

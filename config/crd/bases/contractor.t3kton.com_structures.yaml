@@ -61,26 +61,7 @@ spec:
               blueprint:
                 type: string
               configValues:
-                additionalProperties:
-                  description: |-
-                    https://github.com/kubernetes-sigs/controller-tools/issues/461
-                    https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
-                  properties:
-                    type:
-                      enum:
-                      - nil
-                      - number
-                      - bool
-                      - string
-                      - array
-                      - map
-                      type: string
-                    value:
-                      type: string
-                  required:
-                  - value
-                  type: object
-                type: object
+                x-kubernetes-preserve-unknown-fields: true
               consumerRef:
                 description: ConsumerRef can be used to store information about something
                   that is using this structure.
@@ -145,26 +126,7 @@ spec:
               blueprint:
                 type: string
               configValues:
-                additionalProperties:
-                  description: |-
-                    https://github.com/kubernetes-sigs/controller-tools/issues/461
-                    https://github.com/kubernetes/enhancements/blob/master/keps/sig-api-machinery/1027-api-unions/README.md
-                  properties:
-                    type:
-                      enum:
-                      - nil
-                      - number
-                      - bool
-                      - string
-                      - array
-                      - map
-                      type: string
-                    value:
-                      type: string
-                  required:
-                  - value
-                  type: object
-                type: object
+                x-kubernetes-preserve-unknown-fields: true
               foundation:
                 type: string
               foundationBluePrint:

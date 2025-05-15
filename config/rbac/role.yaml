@@ -26,6 +26,12 @@ rules:
 - apiGroups:
   - contractor.t3kton.com
   resources:
+  - structures/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - contractor.t3kton.com
+  resources:
   - structures/status
   verbs:
   - get

@@ -51,14 +51,16 @@ func SetupStructureWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,groups=contractor.t3kton.com,resources=structures,verbs=create,versions=v1,name=vstructure.kb.io,sideEffects=None,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-contractor-t3kton-com-v1-structure,mutating=true,failurePolicy=fail,sideEffects=None,groups=contractor.t3kton.com,resources=structures,verbs=create,versions=v1,name=mstructure-v1.kb.io,admissionReviewVersions=v1
 
 // StructureCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Structure when those are created
 type StructureCustomDefaulter struct {
 }
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
+var _ webhook.CustomDefaulter = &StructureCustomDefaulter{}
+
+// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Structure.
 // We will copy the State, BluePrint, and ConfigValues from contractor if they are blank
 func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	fmt.Println("--------------------------------------------------------------------- Defaulter called")
@@ -66,8 +68,7 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 	if !ok {
 		return fmt.Errorf("expected an Structure object but got %T", obj)
 	}
-
-	structurelog.Info("Defaulting for Structure", "name", structure.Name)
+	structurelog.Info("Defaulting for Structure", "name", structure.GetName())
 
 	if structure.Spec.ID == 0 {
 		return fmt.Errorf("ID not set")
@@ -108,13 +109,10 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-// +kubebuilder:webhook:path=/validate-contractor-t3kton-com-v1-structure,mutating=false,failurePolicy=fail,sideEffects=None,groups=contractor.t3kton.com,resources=structures,verbs=create;update,versions=v1,name=vstructure-v1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-contractor-t3kton-com-v1-structure,mutating=false,failurePolicy=fail,sideEffects=None,groups=contractor.t3kton.com,resources=structures,verbs=create;update;delete,versions=v1,name=vstructure-v1.kb.io,admissionReviewVersions=v1
 
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
+// StructureCustomValidator struct is responsible for validating the Structure resource
+// when it is created, updated, or deleted.
 type StructureCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
@@ -123,6 +121,8 @@ var _ webhook.CustomValidator = &StructureCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Structure.
 func (v *StructureCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	fmt.Println("--------------------------------------------------------------------- Validate Create called")
+
 	structure, ok := obj.(*contractorv1.Structure)
 	if !ok {
 		return nil, fmt.Errorf("expected a Structure object but got %T", obj)
@@ -135,6 +135,7 @@ func (v *StructureCustomValidator) ValidateCreate(ctx context.Context, obj runti
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Structure.
 func (v *StructureCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	fmt.Println("--------------------------------------------------------------------- Validate Update called")
 	newStructure, ok := newObj.(*contractorv1.Structure)
 	if !ok {
 		return nil, fmt.Errorf("expected a Structure object for the newObj but got %T", newObj)
@@ -152,15 +153,12 @@ func (v *StructureCustomValidator) ValidateUpdate(ctx context.Context, oldObj, n
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Structure.
 func (v *StructureCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	fmt.Println("--------------------------------------------------------------------- Validate Delete called")
 	structure, ok := obj.(*contractorv1.Structure)
 	if !ok {
 		return nil, fmt.Errorf("expected a Structure object but got %T", obj)
 	}
 	structurelog.Info("Validation for Structure upon deletion", "name", structure.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
-	// TODO: Do we want to make sure the structure is planned before deleting?
-
-	return nil, nil
+	return nil, apierrors.NewAggregate(structure.CanDelete(ctx))
 }

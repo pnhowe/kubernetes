@@ -33,6 +33,8 @@ type StructureSpec struct {
 	// +kubebuilder:validation:Optional
 	BluePrint string `json:"blueprint,omitempty"`
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	ConfigValues ConfigValues `json:"configValues,omitempty"`
 	// ConsumerRef can be used to store information about something that is using this structure.
 	// +kubebuilder:validation:Optional
@@ -43,8 +45,10 @@ type StructureSpec struct {
 
 // StructureStatus defines the observed state of the Structure
 type StructureStatus struct {
-	State               string       `json:"state,omitempty"`
-	BluePrint           string       `json:"blueprint,omitempty"`
+	State     string `json:"state,omitempty"`
+	BluePrint string `json:"blueprint,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	ConfigValues        ConfigValues `json:"configValues,omitempty"`
 	Job                 *JobStatus   `json:"job,omitempty"`
 	Hostname            string       `json:"hostname,omitempty"`
@@ -90,4 +94,8 @@ type StructureList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Structure `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&Structure{}, &StructureList{})
 }

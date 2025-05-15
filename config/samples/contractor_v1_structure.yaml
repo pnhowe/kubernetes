@@ -10,13 +10,18 @@ spec:
   state: built
   blueprint: test-structure-base
   configValues:
-    myval: 
-      type: string
-      string: test
-      boolean: true
-    valagain:
-      type: array
-      array: 
-        - type: string
-          string: asdfasdfa
-
+    myval: stuff
+    thisint: 123
+    thisbool: true
+    thisslice:
+      - stufff
+      - true
+      - 123
+      - 43.42
+    thismap:
+      astr: hi there
+      anstr: by there
+      amap:
+        mmstr: goodies
+        mmint: 123
+    

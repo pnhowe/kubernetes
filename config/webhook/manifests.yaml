@@ -12,7 +12,7 @@ webhooks:
       namespace: system
       path: /mutate-contractor-t3kton-com-v1-structure
   failurePolicy: Fail
-  name: vstructure.kb.io
+  name: mstructure-v1.kb.io
   rules:
   - apiGroups:
     - contractor.t3kton.com
@@ -46,6 +46,7 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
+    - DELETE
     resources:
     - structures
   sideEffects: None

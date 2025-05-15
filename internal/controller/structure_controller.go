@@ -51,7 +51,7 @@ type StructureReconciler struct {
 
 // +kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/status,verbs=get;update;patch
-// _kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/finalizers,verbs=update
+// +kubebuilder:rbac:groups=contractor.t3kton.com,resources=structures/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 // For more details, check Reconcile and its Result here:
@@ -67,11 +67,6 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	fmt.Println("  ||||||||||||||||")
-	fmt.Println("rev:", structure.ResourceVersion)
-	fmt.Printf("spec: %+v\n", structure.Spec)
-	fmt.Printf("configvalues: %+v\n", structure.Spec.ConfigValues)
-
 	// This should never happen, but just incase
 	if structure.Spec.ID == 0 {
 		logger.Info("ID must be specified")
@@ -81,7 +76,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if (structure.Spec.State == "") || (structure.Spec.BluePrint == "") {
 		logger.Info("Structure is not fully defined")
 		//return ctrl.Result{Requeue: true}, nil // wait for the State and BluePrint to be defined, TODO: do we need to requeue here? will this enitiy get auto-requeued when the spec is updated?
-		return ctrl.Result{}, fmt.Errorf("Structure is not fully defined")
+		return ctrl.Result{}, fmt.Errorf("structure is not fully defined")
 	}
 
 	client := contractor.GetClient(ctx)
@@ -100,28 +95,68 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// See if an existing job has finished
 	if structure.Status.Job != nil && status.Job == nil {
-		r.Recorder.Event(&structure, "Normal", "JobFinished", "Job '"+structure.Status.Job.Script+"' Finished")
+		r.Recorder.Event(&structure, "Normal", "JobFinished", "Job '"+structure.Status.Job.Script+"' finished")
 
 		structure.Status.Job = nil
 		err = r.Status().Update(ctx, &structure)
-		fmt.Println("Job Done update err:", err)
 		if apierrors.IsConflict(err) {
 			logger.Info("Structure Changed on us")
-		} else {
-			logger.Error(err, "Error Updating Structure")
+		}
+		if err != nil {
+			logger.Error(err, "updating job status failed")
 		}
 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// see if the state of the structure/foundation/job on contractor	is different from what we have
+	// the status is our internal copy of the existing status of the structure
 	// we could break this up to compare ConfigValues, state, job, etc sepertaly
-	diff := cmp.Diff(structure.Status, status)
-	if diff != "" {
-		// it is, update our copy and requeue
-		status.DeepCopyInto(&structure.Status)
+	// TODO: for testing, make sure all these comparision work, expecially the configvalue and job, when empty, nil, maps, slices, maps with maps and slices and nils, "7" != 7 != 7.0, oh my
+	dirty := false
+	changed := []string{}
+	if structure.Status.State != status.State {
+		structure.Status.State = status.State
+		changed = append(changed, "State")
+		dirty = true
+	}
+	if structure.Status.BluePrint != status.BluePrint {
+		structure.Status.BluePrint = status.BluePrint
+		changed = append(changed, "BluePrint")
+		dirty = true
+	}
+	if structure.Status.Hostname != status.Hostname {
+		structure.Status.Hostname = status.Hostname
+		changed = append(changed, "Hostname")
+		dirty = true
+	}
+	if !cmp.Equal(status.ConfigValues, structure.Status.ConfigValues) {
+		structure.Status.ConfigValues = status.ConfigValues.DeepCopy()
+		changed = append(changed, "ConfigValues")
+		dirty = true
+	}
+	// This one is just so we can watch the job come and go
+	// for somereason cmp.Equal(nil, nil) is false here
+	if !cmp.Equal(structure.Status.Job, status.Job) && status.Job != nil {
+		structure.Status.Job = status.Job.DeepCopy()
+		changed = append(changed, "Job")
+		dirty = true
+	}
+	// These two can't be changed in k8s, we are replicating them here for information purposes
+	if structure.Status.Foundation != status.Foundation {
+		structure.Status.Foundation = status.Foundation
+		changed = append(changed, "Foundation")
+		dirty = true
+	}
+	if structure.Status.FoundationBluePrint != status.FoundationBluePrint {
+		structure.Status.FoundationBluePrint = status.FoundationBluePrint
+		changed = append(changed, "FoundationBluePrint")
+		dirty = true
+	}
+
+	if dirty {
+		logger.Info("Status Change Detected", "changed", changed)
 		err = r.Status().Update(ctx, &structure)
-		fmt.Println("Status Update err:", err)
 		if apierrors.IsConflict(err) {
 			logger.Info("Structure Changed on us, will try again")
 			return ctrl.Result{Requeue: true}, nil
@@ -139,17 +174,16 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Check Config Values, if need changing, change them then requeue, no delay
-	diff = cmp.Diff(structure.Spec.ConfigValues, status.ConfigValues)
-	if diff != "" {
-		fmt.Println("--- Config Value Diff ---")
-		fmt.Printf("diff Spec: %+v\n", structure.Spec.ConfigValues)
-		fmt.Printf("diff Status: %+v\n", status.ConfigValues)
-		fmt.Println(diff)
+	// This is the only thing in the spec that does not require a job
+	if !cmp.Equal(structure.Spec.ConfigValues, status.ConfigValues) {
 		// We only want to update the config values, make an empty copy with only config values so only thoes get updated
 		tmp_structure := client.BuildingStructureNewWithID(*t3kton_structure.ID)
 		tmp_ConfigValues := structure.Spec.ConfigValues.ToContractor()
 		tmp_structure.ConfigValues = &tmp_ConfigValues
-		tmp_structure.Update(ctx)
+		_, err := tmp_structure.Update(ctx)
+		if err != nil {
+			return ctrl.Result{Requeue: false}, errors.Wrap(err, "update config values on contractor faild") // TODO: Check to see if it is something that could be retried
+		}
 		logger.Info("ConfigValues updated")
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -159,6 +193,22 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		r.Recorder.Event(&structure, "Normal", "ReconcileComplete", "reconcile complete")
 		logger.Info("Reconciled Structure")
 		return ctrl.Result{}, nil
+	}
+
+	if structure.Status.BluePrint != structure.Spec.BluePrint {
+		// If we are allready in planned state, we can update the blueprint, no destroy job needed
+		if structure.Status.State == "planned" {
+			tmp_structure := client.BuildingStructureNewWithID(*t3kton_structure.ID)
+			tmp_blueprint := "/api/v1/BluePrint/StructureBluePrint:" + structure.Spec.BluePrint + ":"
+			tmp_structure.Blueprint = &tmp_blueprint
+			_, err := tmp_structure.Update(ctx)
+			if err != nil {
+				return ctrl.Result{Requeue: false}, errors.Wrap(err, "update blueprint on contractor faild") // TODO: Check to see if it is something that could be retried
+			}
+			logger.Info("BluePrint updated")
+			return ctrl.Result{Requeue: true}, nil
+		}
+		// fallthrough to the destroy job creation
 	}
 
 	// Guess we need to make a job then
@@ -173,7 +223,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	jobID, err := r.startJob(ctx, logger, client, structure.Spec.ID, jobName)
 	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "create job faild")
+		return ctrl.Result{Requeue: false}, errors.Wrap(err, "job create faild") // TODO: Check to see if it is something that could be retried
 	}
 	r.Recorder.Event(&structure, "Normal", "JobCreated", "job '"+jobName+"' created, ID:"+strconv.Itoa(jobID))
 	return ctrl.Result{Requeue: true}, nil

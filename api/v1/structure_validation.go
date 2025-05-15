@@ -84,8 +84,19 @@ func (s *Structure) ValidateChanges(ctx context.Context, client *client.Contract
 		errs = append(errs, errors.New("can not change the State while there is a Job"))
 	}
 
-	// TODO: do we allow changing confivalues at any time?  I think so?
-	// TODO: make sure the blueprint value is valid
+	return errs
+}
+
+func (s *Structure) CanDelete(ctx context.Context) []error {
+	var errs []error
+
+	if s.Status.State != "planned" || s.Spec.State != "planned" {
+		errs = append(errs, errors.New("can not delete Structure that is not in planned state"))
+	}
+
+	if s.Status.Job != nil {
+		errs = append(errs, errors.New("can not delete Structure that has a job"))
+	}
 
 	return errs
 }
