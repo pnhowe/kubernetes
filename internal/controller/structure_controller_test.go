@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	contractorClient "github.com/t3kton/contractor_goclient"
@@ -203,8 +204,9 @@ var _ = Describe("Structure Controller", func() {
 			}
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			By("Reconciling the before structure is made resource")
@@ -245,7 +247,7 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Update(ctx, structure)).NotTo(HaveOccurred())
 
 			result, err = controllerReconciler.Reconcile(ctx, req)
-			Expect(err).To(MatchError("Structure is not fully defined"))
+			Expect(err).To(MatchError("structure is not fully defined"))
 			Expect(result.IsZero()).To(Equal(true))
 		})
 
@@ -274,8 +276,9 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockJobID = 0
@@ -340,8 +343,9 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockStructure.State = cinp.StringAddr("built")
@@ -417,8 +421,9 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, structure)).To(Succeed())
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockStructureState = "planned"
@@ -539,8 +544,9 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, structure)).To(Succeed())
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockStructureState = "built"
@@ -661,8 +667,9 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, structure)).To(Succeed())
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockStructureState = "planned"
@@ -759,8 +766,9 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, structure)).To(Succeed())
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockStructureState = "built"
@@ -859,8 +867,9 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, structure)).To(Succeed())
 
 			controllerReconciler := &StructureReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &record.FakeRecorder{},
 			}
 
 			mockStructureState = "planned"

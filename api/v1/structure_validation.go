@@ -90,8 +90,8 @@ func (s *Structure) ValidateChanges(ctx context.Context, client *client.Contract
 func (s *Structure) CanDelete(ctx context.Context) []error {
 	var errs []error
 
-	if s.Status.State != "planned" || s.Spec.State != "planned" {
-		errs = append(errs, errors.New("can not delete Structure that is not in planned state"))
+	if s.Status.State == "built" || s.Spec.State == "built" {
+		errs = append(errs, errors.New("can not delete Structure that is in planned state"))
 	}
 
 	if s.Status.Job != nil {

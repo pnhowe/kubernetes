@@ -63,7 +63,6 @@ var _ webhook.CustomDefaulter = &StructureCustomDefaulter{}
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Structure.
 // We will copy the State, BluePrint, and ConfigValues from contractor if they are blank
 func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	fmt.Println("--------------------------------------------------------------------- Defaulter called")
 	structure, ok := obj.(*contractorv1.Structure)
 	if !ok {
 		return fmt.Errorf("expected an Structure object but got %T", obj)
@@ -121,8 +120,6 @@ var _ webhook.CustomValidator = &StructureCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Structure.
 func (v *StructureCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	fmt.Println("--------------------------------------------------------------------- Validate Create called")
-
 	structure, ok := obj.(*contractorv1.Structure)
 	if !ok {
 		return nil, fmt.Errorf("expected a Structure object but got %T", obj)
@@ -135,7 +132,6 @@ func (v *StructureCustomValidator) ValidateCreate(ctx context.Context, obj runti
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Structure.
 func (v *StructureCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	fmt.Println("--------------------------------------------------------------------- Validate Update called")
 	newStructure, ok := newObj.(*contractorv1.Structure)
 	if !ok {
 		return nil, fmt.Errorf("expected a Structure object for the newObj but got %T", newObj)
@@ -153,7 +149,6 @@ func (v *StructureCustomValidator) ValidateUpdate(ctx context.Context, oldObj, n
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Structure.
 func (v *StructureCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	fmt.Println("--------------------------------------------------------------------- Validate Delete called")
 	structure, ok := obj.(*contractorv1.Structure)
 	if !ok {
 		return nil, fmt.Errorf("expected a Structure object but got %T", obj)
