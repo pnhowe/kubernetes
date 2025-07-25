@@ -136,16 +136,29 @@ limitations under the License.
 
 
 
-
+## setting up testing
 
 mkdir -p /tmp/k8s-webhook-server/serving-certs
 openssl req -x509 -newkey rsa:4096 -keyout /tmp/k8s-webhook-server/serving-certs/tls.key -out /tmp/k8s-webhook-server/serving-certs/tls.crt -sha256 -days 3650 -nodes -subj "/C=NA/ST=NA/L=NA/O=NA/OU=NA/CN=NA"
 
 kind create cluster
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml
+(in t3kton/kubernetes)
 make install
 
 make undeploy ; set +x ; export VER=0.0.12 ; make docker-build IMG=contractor:$VER && kind load docker-image contractor:$VER --name kind && make deploy IMG=contractor:$VER
 make run
 
 kubectl create -f config/samples/contractor_v1_structure.yaml
+
+## loading metal3
+
+kubectl create namespace baremetal-operator-system
+kubectl create namespace metal3
+(in baremetal-operator)
+make install
+make docker
+kind load docker-image baremetal-operator:latest --name kind
+nano config/base/manager.yaml
+  imagePullPolicy: Always -> Never
+make deploy
