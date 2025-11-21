@@ -86,7 +86,7 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		return fmt.Errorf("unable to get structure '%d', err: %s", structure.Spec.ID, err)
 	}
 
-	// State, Blueprint, configvalues should come from curent contractor state if they are not set
+	// State, Blueprint, configvalues should come from current contractor state if they are not set
 	if structure.Spec.State == "" {
 		structurelog.Info("setting", "state", *upstreamStructure.State)
 		structure.Spec.State = *upstreamStructure.State

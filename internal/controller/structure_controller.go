@@ -112,7 +112,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// see if the state of the structure/foundation/job on contractor	is different from what we have
 	// the status is our internal copy of the existing status of the structure
 	// we could break this up to compare ConfigValues, state, job, etc sepertaly
-	// TODO: for testing, make sure all these comparision work, expecially the configvalue and job, when empty, nil, maps, slices, maps with maps and slices and nils, "7" != 7 != 7.0, oh my
+	// TODO: for testing, make sure all these comparison work, especially the configvalue and job, when empty, nil, maps, slices, maps with maps and slices and nils, "7" != 7 != 7.0, oh my
 	dirty := false
 	changed := []string{}
 	if structure.Status.State != status.State {
@@ -196,7 +196,7 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if structure.Status.BluePrint != structure.Spec.BluePrint {
-		// If we are allready in planned state, we can update the blueprint, no destroy job needed
+		// If we are already in planned state, we can update the blueprint, no destroy job needed
 		if structure.Status.State == "planned" {
 			tmp_structure := client.BuildingStructureNewWithID(*t3kton_structure.ID)
 			tmp_blueprint := "/api/v1/BluePrint/StructureBluePrint:" + structure.Spec.BluePrint + ":"
@@ -258,7 +258,7 @@ func (r *StructureReconciler) startJob(ctx context.Context, logger logr.Logger, 
 	} else if jobName == "destroy" {
 		jobID, err = structure.CallDoDestroy(ctx)
 	} else {
-		return 0, fmt.Errorf("invalid job name '" + jobName + "'")
+		return 0, fmt.Errorf("invalid job name '%s'", jobName)
 	}
 	if err != nil {
 		return 0, errors.Wrap(err, "do job failed")
@@ -334,10 +334,10 @@ func updateJobStatus(job *cclient.ForemanStructureJob, status *contractorv1.Stru
 		status.Job.Progress = "0"
 	}
 
-	r, _ = regexp.Compile(`'time_remaining': '[0-9:]{5}'`)
+	r, _ = regexp.Compile(`'time_remaining': '-?[0-9:]{2,}'`)
 	jobStatus = r.FindString(*job.Status)
 	if jobStatus != "" {
-		status.Job.MaxTimeRemaining = jobStatus[19:24]
+		status.Job.MaxTimeRemaining = jobStatus[19 : len(jobStatus)-1]
 	} else if status.Job.Progress == "100.0" {
 		status.Job.MaxTimeRemaining = "00:00"
 	} else {

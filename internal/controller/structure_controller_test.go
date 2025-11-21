@@ -49,9 +49,9 @@ func BuildingStructureMatcher(uri string) gomock.Matcher {
 }
 
 func (b *buildingStructureMatcher) Matches(x any) bool {
-	switch x.(type) {
+	switch y := x.(type) {
 	case *contractorClient.BuildingStructure:
-		return x.(*contractorClient.BuildingStructure).GetURI() == b.uri
+		return y.GetURI() == b.uri
 	}
 	return false
 }
@@ -251,7 +251,7 @@ var _ = Describe("Structure Controller", func() {
 			Expect(result.IsZero()).To(Equal(true))
 		})
 
-		It("fall through when it is allready in the correct state(planned) and blueprint", func() {
+		It("fall through when it is already in the correct state(planned) and blueprint", func() {
 			// this will just pull in the updated status
 			By("creating the custom resource for the Kind Structure")
 			var structure2 contractorv1.Structure
@@ -318,7 +318,7 @@ var _ = Describe("Structure Controller", func() {
 
 		})
 
-		It("fall through when it is allready in the correct state(built) and blueprint", func() {
+		It("fall through when it is already in the correct state(built) and blueprint", func() {
 			// this will just pull in the updated status
 			By("creating the custom resource for the Kind Structure")
 			var structure2 contractorv1.Structure
