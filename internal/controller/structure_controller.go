@@ -24,6 +24,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -85,15 +87,18 @@ type StructureReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
+// readySetter records what the Ready condition should be when the reconcile is done, if it is not called the condition is left alone
+type readySetter func(ready bool, reason string, message string)
+
 // For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.2/pkg/reconcile
-func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
+func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling Structure", "request", req)
 
 	var structure contractorv1.Structure
 
-	err := r.Get(ctx, req.NamespacedName, &structure)
+	err = r.Get(ctx, req.NamespacedName, &structure)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -103,9 +108,32 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	// however this reconcile ends, record how it went in the Ready condition
+	var readyCondition *metav1.Condition
+	setReady := func(ready bool, reason string, message string) {
+		status := metav1.ConditionFalse
+		if ready {
+			status = metav1.ConditionTrue
+		}
+		readyCondition = &metav1.Condition{Type: contractorv1.ConditionReady, Status: status, Reason: reason, Message: message, ObservedGeneration: structure.Generation}
+	}
+	defer func() {
+		if readyCondition == nil || !meta.SetStatusCondition(&structure.Status.Conditions, *readyCondition) {
+			return
+		}
+		updateErr := r.Status().Update(ctx, &structure)
+		if apierrors.IsConflict(updateErr) {
+			logger.Info("Structure Changed on us, will try again")
+			result = ctrl.Result{RequeueAfter: requeueSoon}
+		} else if updateErr != nil && err == nil {
+			err = errors.Wrap(updateErr, "update ready condition faild")
+		}
+	}()
+
 	// This should never happen, but just incase
 	if structure.Spec.ID == 0 {
 		logger.Info("ID must be specified")
+		setReady(false, contractorv1.ReasonInvalidSpec, "ID not specified")
 		return ctrl.Result{}, fmt.Errorf("ID Not Specified")
 	}
 
@@ -113,23 +141,27 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Info("Structure is not fully defined")
 		// the defaulting webhook fills these in, so this only happens if the webhook is bypassed.
 		// Changing the spec triggers a new reconcile, so there is no need to requeue, the error is just so it is noticed
+		setReady(false, contractorv1.ReasonInvalidSpec, "state and blueprint must be specified")
 		return ctrl.Result{}, fmt.Errorf("structure is not fully defined")
 	}
 
 	client, err := contractor.GetClient(ctx)
 	if err != nil {
+		setReady(false, contractorv1.ReasonContractorError, err.Error())
 		return ctrl.Result{}, errors.Wrap(err, "unable to get contractor client")
 	}
 
 	logger.Info("Getting Structure", "id", structure.Spec.ID)
 	t3kton_structure, err := client.BuildingStructureGet(ctx, structure.Spec.ID)
 	if err != nil {
+		setReady(false, contractorv1.ReasonContractorError, "unable to get the structure from contractor: "+err.Error())
 		return ctrl.Result{}, errors.Wrap(err, "get structure faild")
 	}
 
 	status := contractorv1.StructureStatus{}
 	err = updateStatus(ctx, logger, client, t3kton_structure, &status)
 	if err != nil {
+		setReady(false, contractorv1.ReasonContractorError, "unable to get the status from contractor: "+err.Error())
 		return ctrl.Result{}, errors.Wrap(err, "update status faild")
 	}
 
@@ -171,20 +203,22 @@ func (r *StructureReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// if there is a job, requeue and wait for the job to finish before we do anything else
 	if structure.Status.Job != nil {
+		setReady(false, contractorv1.ReasonJobRunning, "job '"+structure.Status.Job.Script+"' is in progress")
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil // contractor has no way to tell us the job finished, so poll
 	}
 
 	if r.SyncMode == SyncModeFollow {
-		return r.followContractor(ctx, logger, &structure, &status)
+		return r.followContractor(ctx, logger, &structure, &status, setReady)
 	}
 
-	return r.enforceSpec(ctx, logger, client, &structure, &status, t3kton_structure)
+	return r.enforceSpec(ctx, logger, client, &structure, &status, t3kton_structure, setReady)
 }
 
 // enforceSpec is the SyncModeEnforce reconcile, status has already been updated from contractor, and there is no job.
 // Contractor is changed to match the spec, one step at a time, each step requeues so the status is refreshed.
 func (r *StructureReconciler) enforceSpec(ctx context.Context, logger logr.Logger, client *cclient.Contractor,
-	structure *contractorv1.Structure, status *contractorv1.StructureStatus, t3kton_structure *cclient.BuildingStructure) (ctrl.Result, error) {
+	structure *contractorv1.Structure, status *contractorv1.StructureStatus, t3kton_structure *cclient.BuildingStructure,
+	setReady readySetter) (ctrl.Result, error) {
 	// Check Config Values, if need changing, change them then requeue, no delay
 	// This is the only thing in the spec that does not require a job
 	if !cmp.Equal(structure.Spec.ConfigValues, status.ConfigValues) {
@@ -194,14 +228,17 @@ func (r *StructureReconciler) enforceSpec(ctx context.Context, logger logr.Logge
 		tmp_structure.ConfigValues = &tmp_ConfigValues
 		err := tmp_structure.Update(ctx)
 		if err != nil {
+			setReady(false, contractorv1.ReasonContractorError, "unable to update the config values in contractor: "+err.Error())
 			return ctrl.Result{}, errors.Wrap(err, "update config values on contractor faild")
 		}
 		logger.Info("ConfigValues updated")
+		setReady(false, contractorv1.ReasonApplyingChanges, "config values updated in contractor")
 		return ctrl.Result{RequeueAfter: requeueSoon}, nil
 	}
 
 	if (structure.Status.State == structure.Spec.State) && (structure.Status.BluePrint == structure.Spec.BluePrint) {
 		logger.Info("Reconciled Structure")
+		setReady(true, contractorv1.ReasonReconciled, "structure matches the spec")
 		return r.idleResult(), nil
 	}
 
@@ -214,9 +251,11 @@ func (r *StructureReconciler) enforceSpec(ctx context.Context, logger logr.Logge
 		tmp_structure.Blueprint = &tmp_blueprint
 		err := tmp_structure.Update(ctx)
 		if err != nil {
+			setReady(false, contractorv1.ReasonContractorError, "unable to update the blueprint in contractor: "+err.Error())
 			return ctrl.Result{}, errors.Wrap(err, "update blueprint on contractor faild")
 		}
 		logger.Info("BluePrint updated")
+		setReady(false, contractorv1.ReasonApplyingChanges, "blueprint updated in contractor")
 		return ctrl.Result{RequeueAfter: requeueSoon}, nil
 	}
 
@@ -229,13 +268,16 @@ func (r *StructureReconciler) enforceSpec(ctx context.Context, logger logr.Logge
 	} else if structure.Status.State == contractorv1.StatePlanned && structure.Spec.State == contractorv1.StateBuilt {
 		jobName = "create"
 	} else {
+		setReady(false, contractorv1.ReasonInvalidSpec, fmt.Sprintf("can not get from '%s' to '%s'", structure.Status.State, structure.Spec.State))
 		return ctrl.Result{}, fmt.Errorf("invalid target state, current state '%s', target state '%s'", structure.Status.State, structure.Spec.State)
 	}
 
 	jobID, err := r.startJob(ctx, logger, client, structure.Spec.ID, jobName)
 	if err != nil {
+		setReady(false, contractorv1.ReasonContractorError, "unable to start the '"+jobName+"' job: "+err.Error())
 		return ctrl.Result{}, errors.Wrap(err, "job create faild")
 	}
+	setReady(false, contractorv1.ReasonApplyingChanges, "job '"+jobName+"' created")
 	r.Recorder.Eventf(structure, nil, corev1.EventTypeNormal, "JobCreated", "Reconcile", "job '%s' created, ID:%d", jobName, jobID)
 	return ctrl.Result{RequeueAfter: requeueSoon}, nil
 }
@@ -249,7 +291,8 @@ func (r *StructureReconciler) idleResult() ctrl.Result {
 // The spec is changed to match contractor, nothing is changed in contractor.
 // The state and blueprint are changed in separate updates, so each update passes the validation webhook
 // the same way a person making the changes one at a time would.
-func (r *StructureReconciler) followContractor(ctx context.Context, logger logr.Logger, structure *contractorv1.Structure, status *contractorv1.StructureStatus) (ctrl.Result, error) {
+func (r *StructureReconciler) followContractor(ctx context.Context, logger logr.Logger, structure *contractorv1.Structure, status *contractorv1.StructureStatus,
+	setReady readySetter) (ctrl.Result, error) {
 	changed := []string{}
 
 	if structure.Spec.State != status.State {
@@ -267,6 +310,7 @@ func (r *StructureReconciler) followContractor(ctx context.Context, logger logr.
 
 	if len(changed) == 0 {
 		logger.Info("Structure matches contractor")
+		setReady(true, contractorv1.ReasonReconciled, "structure matches contractor")
 		return r.idleResult(), nil
 	}
 
@@ -277,8 +321,10 @@ func (r *StructureReconciler) followContractor(ctx context.Context, logger logr.
 		return ctrl.Result{RequeueAfter: requeueSoon}, nil
 	}
 	if err != nil {
+		setReady(false, contractorv1.ReasonSyncFailed, "unable to update the spec to match contractor: "+err.Error())
 		return ctrl.Result{}, errors.Wrap(err, "update spec to match contractor faild")
 	}
+	setReady(false, contractorv1.ReasonApplyingChanges, "spec updated to match contractor")
 
 	r.Recorder.Eventf(structure, nil, corev1.EventTypeNormal, "SpecSynced", "Reconcile", "spec updated to match contractor: %s", strings.Join(changed, ", "))
 	return ctrl.Result{RequeueAfter: requeueSoon}, nil

@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,staticcheck
 )
@@ -128,8 +129,25 @@ func InstallCertManager() error {
 		"--timeout", "5m",
 	)
 
-	_, err := Run(cmd)
-	return err
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	// The webhook can be Available before the cainjector has given its webhook configuration the CA,
+	// until then everything that creates a Certificate or Issuer fails with "certificate signed by unknown authority"
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		cmd = exec.Command("kubectl", "get", "validatingwebhookconfiguration", "cert-manager-webhook",
+			"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
+		output, err := Run(cmd)
+		if err == nil && len(strings.TrimSpace(output)) > 10 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("cert-manager's webhook did not get its CA bundle: %v", err)
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // IsCertManagerCRDsInstalled checks if any Cert Manager CRDs are installed

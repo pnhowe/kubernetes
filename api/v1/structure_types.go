@@ -21,6 +21,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ConditionReady is the type of the Ready condition
+const ConditionReady = "Ready"
+
+// The reasons for the Ready condition
+const (
+	// ReasonReconciled is Ready=True, the Structure is in sync
+	ReasonReconciled = "Reconciled"
+	// ReasonJobRunning is Ready=False, a job is running in contractor
+	ReasonJobRunning = "JobRunning"
+	// ReasonApplyingChanges is Ready=False, a change was just made, and the operator is waiting to see it take effect
+	ReasonApplyingChanges = "ApplyingChanges"
+	// ReasonContractorError is Ready=False, contractor could not be reached or returned an error
+	ReasonContractorError = "ContractorError"
+	// ReasonInvalidSpec is Ready=False, the spec can not be acted on
+	ReasonInvalidSpec = "InvalidSpec"
+	// ReasonSyncFailed is Ready=False, in follow mode updating the spec to match contractor failed (ie: the webhook rejected it)
+	ReasonSyncFailed = "SyncFailed"
+)
+
 // The states a Structure can be in
 const (
 	StatePlanned = "planned"
@@ -58,6 +77,12 @@ type StructureStatus struct {
 	Hostname            string       `json:"hostname,omitempty"`
 	Foundation          string       `json:"foundation,omitempty"`
 	FoundationBluePrint string       `json:"foundationBluePrint,omitempty"`
+	// Conditions has "Ready", which is True when the Structure matches the spec (or contractor, in follow mode)
+	// and nothing is running, see the Reason for what it is waiting on or what is wrong.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // JobStatus defines the observed state of the Job
@@ -80,6 +105,8 @@ type JobStatus struct {
 // +kubebuilder:printcolumn:JSONPath=`.status.foundation`,name="Foundation",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.state`,name="Current State",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.job.state`,name="Job State",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Ready")].status`,name="Ready",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Ready")].reason`,name="Reason",type=string,priority=1
 
 // Structure is the Schema for the structures API
 type Structure struct {

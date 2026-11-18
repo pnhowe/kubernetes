@@ -17,6 +17,30 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The tests need a contractor with demo data, the demo stack from the docker repository.
+      # The image is built from the sources (the first build is slow, the iPXE boot loaders are compiled)
+      - name: Clone the contractor demo stack
+        uses: actions/checkout@v4
+        with:
+          repository: T3kton/docker
+          path: docker
+
+      - name: Build the contractor demo image
+        run: make -C docker image
+
+      - name: Start the contractor demo stack
+        run: |
+          docker compose -f docker/docker-compose.yml up -d
+          echo "Waiting for contractor, and the demo data..."
+          for i in $(seq 1 60); do
+            if [ "$(docker compose -f docker/docker-compose.yml ps -q demo-data | xargs -r docker inspect -f '{{.State.Status}} {{.State.ExitCode}}')" = "exited 0" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose -f docker/docker-compose.yml logs
+          exit 1
+
       - name: Install the latest version of kind
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
@@ -33,3 +57,7 @@ jobs:
         run: |
           go mod tidy
           make test-e2e
+
+      - name: Contractor logs, if it failed
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs --tail 200

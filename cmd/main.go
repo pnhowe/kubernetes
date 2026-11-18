@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -176,10 +175,11 @@ func main() {
 		})
 	}
 
-	ctx := context.TODO()
-	err = contractor.SetupFactory(ctx, contractorHost, contractorUsername, contractorPassword, contractorProxy)
+	// this does not connect to contractor, that happens when it is first needed, so the operator starts
+	// even if contractor is not up yet, and the problem is shown in the Structures' status
+	err = contractor.SetupFactory(contractorHost, contractorUsername, contractorPassword, contractorProxy)
 	if err != nil {
-		setupLog.Error(err, "unable to connect to contractor")
+		setupLog.Error(err, "invalid contractor settings")
 		os.Exit(1)
 	}
 

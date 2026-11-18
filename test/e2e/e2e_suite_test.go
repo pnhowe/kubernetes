@@ -17,14 +17,17 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"t3kton.com/pkg/contractor"
 	"t3kton.com/test/utils"
 )
 
@@ -39,13 +42,52 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "example.com/kubernetes:v0.0.1"
+	projectImage = "t3kton-operator:e2e"
+
+	// The tests need a running contractor with the demo data loaded, the demo stack in the docker repository
+	// (docker-compose up -d) is what these tests are written for, it has the Test plugin, which only simulates builds, and
+	// the foundations test01 - test04 each with a structure.
+	// - E2E_CONTRACTOR_LOCAL_URL: how the tests get to contractor, default http://localhost:8080
+	// - E2E_CONTRACTOR_URL: how the operator, in the cluster, gets to contractor, default is the host's address on the
+	//   kind docker network, on port 8080
+	// - E2E_CONTRACTOR_USERNAME, E2E_CONTRACTOR_PASSWORD: default root/root
+	contractorLocalURL   = envDefault("E2E_CONTRACTOR_LOCAL_URL", "http://localhost:8080")
+	contractorClusterURL string
+	contractorUsername   = envDefault("E2E_CONTRACTOR_USERNAME", "root")
+	contractorPassword   = envDefault("E2E_CONTRACTOR_PASSWORD", "root")
+
+	// the structures the tests work on, test01 is used for the enforce tests, and test02 for the follow tests
+	enforceFixture = &fixture{Foundation: "test01"}
+	followFixture  = &fixture{Foundation: "test02"}
 )
+
+func envDefault(name string, defaultValue string) string {
+	if value, ok := os.LookupEnv(name); ok && value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// kindGatewayURL is the address the host (and so the contractor demo stack's published port) can be reached
+// at from inside the kind cluster
+func kindGatewayURL() (string, error) {
+	cmd := exec.Command("docker", "network", "inspect", "kind", "-f", "{{range .IPAM.Config}}{{.Gateway}} {{end}}")
+	output, err := utils.Run(cmd)
+	if err != nil {
+		return "", err
+	}
+	for _, gateway := range strings.Fields(output) {
+		if !strings.Contains(gateway, ":") { // skip the IPv6 one
+			return "http://" + gateway + ":8080", nil
+		}
+	}
+	return "", fmt.Errorf("no IPv4 gateway on the kind docker network, got '%s'", output)
+}
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
 // temporary environment to validate project changes with the the purposed to be used in CI jobs.
-// The default setup requires Kind, builds/loads the Manager Docker image locally, and installs
-// CertManager.
+// The default setup requires Kind, builds/loads the Manager Docker image locally, installs
+// CertManager, and needs the contractor demo stack running (see above).
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	_, _ = fmt.Fprintf(GinkgoWriter, "Starting kubernetes integration test suite\n")
@@ -53,9 +95,28 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	ctx := context.Background()
+
+	By("connecting to contractor")
+	Expect(contractor.SetupFactory(contractorLocalURL, contractorUsername, contractorPassword, "")).To(Succeed())
+	_, err := contractor.GetClient(ctx)
+	Expect(err).NotTo(HaveOccurred(), "Unable to connect to contractor at %s, start the demo stack from the docker "+
+		"repository (docker-compose up -d), or set E2E_CONTRACTOR_LOCAL_URL", contractorLocalURL)
+
+	contractorClusterURL = os.Getenv("E2E_CONTRACTOR_URL")
+	if contractorClusterURL == "" {
+		contractorClusterURL, err = kindGatewayURL()
+		Expect(err).NotTo(HaveOccurred(), "Unable to find how the cluster can get to contractor, set E2E_CONTRACTOR_URL")
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "the operator will use contractor at %s\n", contractorClusterURL)
+
+	By("finding the demo structures")
+	Expect(enforceFixture.find(ctx)).To(Succeed())
+	Expect(followFixture.find(ctx)).To(Succeed())
+
 	By("building the manager(Operator) image")
 	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-	_, err := utils.Run(cmd)
+	_, err = utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
 	// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is

@@ -29,6 +29,19 @@ in Contractor right now.
 and the running `job` (script, state, message, progress, time remaining), `kubectl get structures` shows the highlights.
 The operator emits events for job creation and completion, and for spec syncs in follow mode.
 
+`status.conditions` has a `Ready` condition, `kubectl wait --for=condition=Ready structure/NAME` waits for the Structure to match
+the spec (or Contractor, in follow mode) with no job running. When it is `False` the reason says why, `kubectl get structures -o wide`
+shows it:
+
+| Reason | Ready | Meaning |
+|---|---|---|
+| `Reconciled` | True | in sync |
+| `JobRunning` | False | a job is running in Contractor |
+| `ApplyingChanges` | False | a change was just made (config values, blueprint, job started, spec synced), waiting to see it take effect |
+| `ContractorError` | False | Contractor could not be reached, or returned an error, the message has the details, it is retried with backoff |
+| `InvalidSpec` | False | the spec can not be acted on, ie: it asks for a state that can not be reached from the current one |
+| `SyncFailed` | False | follow mode only, the spec could not be updated to match Contractor (ie: the webhook rejected it) |
+
 ### What the operator does (sync mode `enforce`, the default)
 
 The Structure resource is the source of truth, and Contractor is changed to match it:
@@ -83,7 +96,9 @@ kustomization, so the placeholders are never applied by accident).
 
 The Contractor user needs to be able to read Structures, Foundations, BluePrints and Jobs, and in `enforce` mode update
 Structures and run their create and destroy jobs. The operator logs in at startup and refreshes its token as needed, if
-Contractor is unreachable it retries with backoff.
+Contractor is unreachable it retries with backoff. The operator does not connect to Contractor at startup, so it starts even if
+Contractor is down, the Structures show `Ready=False` with reason `ContractorError` until it is back (while it is down the
+webhooks refuse to create or change Structures, since they can not check them).
 
 The webhooks (defaulting and validation) need a TLS certificate, the deployment uses cert-manager for that.
 
@@ -141,7 +156,26 @@ CONTRACTOR_HOST=http://172.19.0.1:8888 CONTRACTOR_USERNAME=root CONTRACTOR_PASSW
 kubectl create -f config/samples/contractor_v1_structure.yaml   # edit the id first
 ```
 
-The unit and controller tests are run with `make test`, the e2e tests (which need kind) with `make test-e2e`, and the linter with `make lint`.
+The unit and controller tests are run with `make test`, and the linter with `make lint`.
+
+### e2e tests
+
+`make test-e2e` deploys the operator into a kind cluster and works real Structures through it (adopt, build, config values,
+drift correction, destroy, the webhooks, and follow mode). It needs `kind` with a cluster (`kind create cluster`, or
+`KIND_CLUSTER=name`), docker, and a running Contractor with the demo data, the demo stack from the
+[docker](https://github.com/T3kton/docker) repository is what it is written for (it has the Test plugin, which only
+simulates building things):
+
+```sh
+(cd ../docker && docker-compose up -d)   # wait for the demo-data service to exit
+kind create cluster
+make test-e2e
+```
+
+By default the tests talk to Contractor at `http://localhost:8080`, and the operator in the cluster reaches it through the host's
+address on the kind docker network. Set `E2E_CONTRACTOR_LOCAL_URL`, `E2E_CONTRACTOR_URL` (as seen from the cluster),
+`E2E_CONTRACTOR_USERNAME` and `E2E_CONTRACTOR_PASSWORD` if yours is different. The tests use the structures for the
+foundations `test01` and `test02` and put their config values back when done.
 
 ## Contributing
 

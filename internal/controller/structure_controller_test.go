@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -64,6 +65,15 @@ const (
 	scriptCreate  = "Create"
 	scriptDestroy = "Destroy"
 )
+
+// expectReady checks the Ready condition
+func expectReady(structure *contractorv1.Structure, status metav1.ConditionStatus, reason string) {
+	condition := meta.FindStatusCondition(structure.Status.Conditions, contractorv1.ConditionReady)
+	Expect(condition).NotTo(BeNil(), "no Ready condition")
+	Expect(condition.Status).To(Equal(status), condition.Message)
+	Expect(condition.Reason).To(Equal(reason), condition.Message)
+	Expect(condition.ObservedGeneration).To(Equal(structure.Generation))
+}
 
 func TimeAddr(v time.Time) *time.Time {
 	return &v
@@ -477,6 +487,7 @@ var _ = Describe("Structure Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
 			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
+			expectReady(&structure2, metav1.ConditionFalse, contractorv1.ReasonJobRunning)
 
 			mockJobID = 0
 
@@ -905,10 +916,10 @@ var _ = Describe("Structure Controller", func() {
 			Expect(structure2.Spec.ConfigValues).To(BeNil())
 
 			By("Setting Config values")
-			structure.Spec.ConfigValues = contractorv1.ConfigValues{}
-			structure.Spec.ConfigValues["test"] = contractorv1.NewConfigValue("asdf")
-			structure.Spec.ConfigValues["test2"] = contractorv1.NewConfigValue(42)
-			Expect(k8sClient.Update(ctx, structure)).To(Succeed())
+			structure2.Spec.ConfigValues = contractorv1.ConfigValues{}
+			structure2.Spec.ConfigValues["test"] = contractorv1.NewConfigValue("asdf")
+			structure2.Spec.ConfigValues["test2"] = contractorv1.NewConfigValue(42)
+			Expect(k8sClient.Update(ctx, &structure2)).To(Succeed())
 
 			By("Reconciling") // update config values
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -974,6 +985,7 @@ var _ = Describe("Structure Controller", func() {
 			Expect(structure2.Spec.BluePrint).To(Equal("test-structure-base"))
 			Expect(structure2.Spec.ConfigValues).To(HaveLen(1))
 			Expect(structure2.Spec.ConfigValues).To(HaveKey("fromcontractor"))
+			expectReady(&structure2, metav1.ConditionTrue, contractorv1.ReasonReconciled)
 		})
 
 		It("destroys a built structure when the blueprint changes, instead of trying to create it", func() {
@@ -1058,6 +1070,53 @@ var _ = Describe("Structure Controller", func() {
 				}
 			}
 			Expect(result.RequeueAfter).To(Equal(5 * time.Minute))
+
+			var structure2 contractorv1.Structure
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
+			expectReady(&structure2, metav1.ConditionTrue, contractorv1.ReasonReconciled)
+		})
+
+		It("reports contractor errors in the Ready condition", func() {
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			structure := &contractorv1.Structure{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: namespaceName},
+				Spec: contractorv1.StructureSpec{
+					ID:           42,
+					State:        contractorv1.StatePlanned,
+					BluePrint:    "test-structure-base",
+					ConfigValues: contractorv1.ConfigValues{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, structure)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, structure)).To(Succeed())
+			}()
+
+			// contractor is "down", the mocks set up in the BeforeEach are not going to be used
+			doGetStructure.Times(0)
+			doGetFoudation.Times(0)
+			doFindJob.Times(0)
+			doGetJob.Times(0)
+			doUpdateStructure.Times(0)
+			doCreateCall.Times(0)
+			doDestroyCall.Times(0)
+			mockCINP.EXPECT().
+				Get(gomock.Any(), gomock.Eq("/api/v1/Building/Structure:42:")).
+				Return(nil, fmt.Errorf("connection refused")).
+				Times(1)
+
+			controllerReconciler := &StructureReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &events.FakeRecorder{},
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, req)
+			Expect(err).To(HaveOccurred())
+
+			var structure2 contractorv1.Structure
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
+			expectReady(&structure2, metav1.ConditionFalse, contractorv1.ReasonContractorError)
 		})
 	})
 })

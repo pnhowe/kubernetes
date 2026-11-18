@@ -17,11 +17,13 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,16 +33,22 @@ import (
 )
 
 // namespace where the project is deployed in
-const namespace = "kubernetes-system"
+const namespace = "t3kton-contractor"
+
+// namePrefix is added to the name of everything by config/default/kustomization.yaml
+const namePrefix = "t3kton-contractor-"
 
 // serviceAccountName created for the project
-const serviceAccountName = "kubernetes-controller-manager"
+const serviceAccountName = namePrefix + "controller-manager"
+
+// deploymentName is the name of the operator's deployment
+const deploymentName = namePrefix + "controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "kubernetes-controller-manager-metrics-service"
+const metricsServiceName = namePrefix + "controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "kubernetes-metrics-binding"
+const metricsRoleBindingName = namePrefix + "metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -60,34 +68,57 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
+		By("creating the contractor-credentials Secret")
+		cmd = exec.Command("kubectl", "create", "secret", "generic", "contractor-credentials", "-n", namespace,
+			"--from-literal=host="+contractorClusterURL,
+			"--from-literal=username="+contractorUsername,
+			"--from-literal=password="+contractorPassword)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create the contractor-credentials Secret")
+
 		By("installing CRDs")
 		cmd = exec.Command("make", "install")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
+		// make deploy changes the image in config/manager/kustomization.yaml, put it back when we are done
+		projectDir, err := utils.GetProjectDir()
+		Expect(err).NotTo(HaveOccurred())
+		kustomizationFile := filepath.Join(projectDir, "config", "manager", "kustomization.yaml")
+		originalKustomization, err := os.ReadFile(kustomizationFile)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = os.WriteFile(kustomizationFile, originalKustomization, 0o644) })
+
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("making the operator resync quickly, so the tests don't need to wait long")
+		setOperatorArgs("--resync-interval=10s")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace, "--ignore-not-found")
+		_, _ = utils.Run(cmd)
+
+		By("removing the metrics ClusterRoleBinding")
+		cmd = exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName, "--ignore-not-found")
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
+		cmd = exec.Command("make", "undeploy", "ignore-not-found=true")
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
-		cmd = exec.Command("make", "uninstall")
+		cmd = exec.Command("make", "uninstall", "ignore-not-found=true")
 		_, _ = utils.Run(cmd)
 
 		By("removing manager namespace")
-		cmd = exec.Command("kubectl", "delete", "ns", namespace)
+		cmd = exec.Command("kubectl", "delete", "ns", namespace, "--ignore-not-found")
 		_, _ = utils.Run(cmd)
 	})
 
@@ -173,7 +204,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=kubernetes-metrics-reader",
+				"--clusterrole="+namePrefix+"metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)
@@ -251,8 +282,9 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("getting the metrics by checking curl-metrics logs")
 			metricsOutput := getMetricsOutput()
+			// controller_runtime_reconcile_total only shows up after the first reconcile, this is there from startup
 			Expect(metricsOutput).To(ContainSubstring(
-				"controller_runtime_reconcile_total",
+				"certwatcher_read_certificate_total",
 			))
 		})
 
@@ -271,7 +303,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"kubernetes-validating-webhook-configuration",
+					namePrefix+"validating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -285,7 +317,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"mutatingwebhookconfigurations.admissionregistration.k8s.io",
-					"kubernetes-mutating-webhook-configuration",
+					namePrefix+"mutating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				mwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -296,14 +328,166 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput := getMetricsOutput()
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	})
+
+	Context("Structure, with the operator enforcing the spec", func() {
+		const name = "e2e-enforce"
+
+		It("should refuse a Structure that does not exist in contractor", func() {
+			err := applyStructure("e2e-missing", "id: 999999")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unable to get structure"))
+		})
+
+		It("should adopt the Structure, filling in the state, blueprint and config values from contractor", func() {
+			Expect(enforceFixture.ensureFoundationBuilt(context.Background())).To(Succeed())
+
+			Expect(applyStructure(name, fmt.Sprintf("id: %d", enforceFixture.StructureID))).To(Succeed())
+
+			Expect(structureField(name, "{.spec.state}")).To(Equal("planned"))
+			Expect(structureField(name, "{.spec.blueprint}")).NotTo(BeEmpty())
+
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, "{.status.state}")).To(Equal("planned"))
+				g.Expect(structureField(name, ready)).To(Equal("True"))
+				g.Expect(structureField(name, readyReason)).To(Equal("Reconciled"))
+			}).Should(Succeed())
+		})
+
+		It("should refuse to change the ID", func() {
+			_, err := kubectl("patch", "structure", name, "-n", namespace, "--type=merge",
+				"-p", fmt.Sprintf(`{"spec":{"id":%d}}`, enforceFixture.StructureID+1000))
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should build the Structure when the state is changed to built", func() {
+			_, err := kubectl("patch", "structure", name, "-n", namespace, "--type=merge", "-p", `{"spec":{"state":"built"}}`)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("seeing the job in the status")
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, "{.status.job.script}")).To(Equal("create"))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Succeed())
+			Expect(structureField(name, ready)).To(Equal("False"))
+
+			By("waiting for it to be built")
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, "{.status.state}")).To(Equal("built"))
+				g.Expect(structureField(name, ready)).To(Equal("True"))
+			}, 5*time.Minute).Should(Succeed())
+
+			state, hasJob, err := enforceFixture.state(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(Equal("built"))
+			Expect(hasJob).To(BeFalse())
+		})
+
+		It("should refuse to delete a built Structure", func() {
+			_, err := kubectl("delete", "structure", name, "-n", namespace)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should write config values to contractor", func() {
+			_, err := kubectl("patch", "structure", name, "-n", namespace, "--type=merge",
+				"-p", `{"spec":{"configValues":{"e2e":"from-k8s","e2e_number":42}}}`)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				values, err := enforceFixture.configValues(context.Background())
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(values).To(HaveKeyWithValue("e2e", "from-k8s"))
+				g.Expect(values).To(HaveKeyWithValue("e2e_number", BeNumerically("==", 42)))
+			}).Should(Succeed())
+		})
+
+		It("should put back config values that are changed in contractor", func() {
+			values, err := enforceFixture.configValues(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			values["e2e"] = "changed-in-contractor"
+			Expect(enforceFixture.setConfigValues(context.Background(), values)).To(Succeed())
+
+			// the resync is every 10 seconds
+			Eventually(func(g Gomega) {
+				values, err := enforceFixture.configValues(context.Background())
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(values).To(HaveKeyWithValue("e2e", "from-k8s"))
+			}).Should(Succeed())
+		})
+
+		It("should destroy the Structure when the state is changed to planned", func() {
+			_, err := kubectl("patch", "structure", name, "-n", namespace, "--type=merge", "-p", `{"spec":{"state":"planned"}}`)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, "{.status.state}")).To(Equal("planned"))
+				g.Expect(structureField(name, ready)).To(Equal("True"))
+			}, 5*time.Minute).Should(Succeed())
+		})
+
+		It("should leave the Structure alone in contractor when the resource is deleted", func() {
+			_, err := kubectl("delete", "structure", name, "-n", namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			state, _, err := enforceFixture.state(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(Equal("planned"))
+
+			By("putting the demo data back the way it was")
+			values, err := enforceFixture.configValues(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			delete(values, "e2e")
+			delete(values, "e2e_number")
+			Expect(enforceFixture.setConfigValues(context.Background(), values)).To(Succeed())
+		})
+	})
+
+	Context("Structure, with the operator following contractor", func() {
+		const name = "e2e-follow"
+
+		It("should start following", func() {
+			setOperatorArgs("--resync-interval=10s", "--sync-mode=follow")
+		})
+
+		It("should update the spec when contractor is changed", func() {
+			Expect(applyStructure(name, fmt.Sprintf("id: %d", followFixture.StructureID))).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, ready)).To(Equal("True"))
+			}).Should(Succeed())
+
+			values, err := followFixture.configValues(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			values["e2e_followed"] = "from-contractor"
+			Expect(followFixture.setConfigValues(context.Background(), values)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, "{.spec.configValues.e2e_followed}")).To(Equal("from-contractor"))
+			}).Should(Succeed())
+		})
+
+		It("should not change contractor to match the spec", func() {
+			_, err := kubectl("patch", "structure", name, "-n", namespace, "--type=merge",
+				"-p", `{"spec":{"configValues":{"e2e_followed":"from-k8s"}}}`)
+			Expect(err).NotTo(HaveOccurred())
+
+			// the spec is put back to match contractor, and contractor still has its value
+			Eventually(func(g Gomega) {
+				g.Expect(structureField(name, "{.spec.configValues.e2e_followed}")).To(Equal("from-contractor"))
+			}).Should(Succeed())
+			values, err := followFixture.configValues(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(values).To(HaveKeyWithValue("e2e_followed", "from-contractor"))
+		})
+
+		It("should clean up", func() {
+			_, err := kubectl("delete", "structure", name, "-n", namespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("putting the demo data back the way it was")
+			values, err := followFixture.configValues(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			delete(values, "e2e_followed")
+			Expect(followFixture.setConfigValues(context.Background(), values)).To(Succeed())
+		})
 	})
 })
 
@@ -364,4 +548,57 @@ type tokenRequest struct {
 	Status struct {
 		Token string `json:"token"`
 	} `json:"status"`
+}
+
+// JSONPaths of the Ready condition
+const (
+	ready       = `{.status.conditions[?(@.type=="Ready")].status}`
+	readyReason = `{.status.conditions[?(@.type=="Ready")].reason}`
+)
+
+// kubectl runs kubectl, the output (which has the error message for the failures) is in the error
+func kubectl(args ...string) (string, error) {
+	return utils.Run(exec.Command("kubectl", args...))
+}
+
+// applyStructure creates or updates a Structure, spec is the YAML of the spec's fields, ie: "id: 3"
+func applyStructure(name string, spec string) error {
+	manifest := fmt.Sprintf(`apiVersion: contractor.t3kton.com/v1
+kind: Structure
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  %s
+`, name, namespace, spec)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	_, err := utils.Run(cmd)
+	return err
+}
+
+// structureField returns the field (a JSONPath) of the Structure, or "" if it is not there (yet)
+func structureField(name string, jsonPath string) string {
+	output, err := kubectl("get", "structure", name, "-n", namespace, "-o", "jsonpath="+jsonPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(output)
+}
+
+// setOperatorArgs adds command line arguments to the operator, and waits for it to restart with them
+func setOperatorArgs(args ...string) {
+	patch := make([]map[string]string, 0, len(args))
+	for _, arg := range args {
+		patch = append(patch, map[string]string{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": arg})
+	}
+	patchJSON, err := json.Marshal(patch)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+	_, err = kubectl("patch", "deployment", deploymentName, "-n", namespace, "--type=json", "-p", string(patchJSON))
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to add the operator arguments")
+
+	_, err = kubectl("rollout", "status", "deployment/"+deploymentName, "-n", namespace, "--timeout=180s")
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "The operator did not restart")
 }

@@ -19,6 +19,8 @@ const tokenLifeTime = time.Minute * 10
 // clientFactory creates authencated Contractor Clients
 type clientFactory struct {
 	mu           sync.Mutex // the controller and webhooks share the client, and token refresh must not race
+	hostname     string
+	proxy        string
 	username     string
 	password     string
 	client       *contractorClient.Contractor
@@ -27,42 +29,59 @@ type clientFactory struct {
 
 var factory *clientFactory = nil
 
-// SetupFactory sets up and checks the connection and authencation information
-func SetupFactory(ctx context.Context, hostname string, username string, password string, proxy string) error {
-	log := ctrl.Log.WithName("contractor")
-	sloger := slog.New(logr.ToSlogHandler(log))
-
-	client, err := contractorClient.NewContractor(ctx, sloger, hostname, proxy, username, password)
-	if err != nil {
-		return err
+// SetupFactory sets up the connection and authencation information.
+// It does not connect, that happens on the first GetClient, so the operator can start (and report
+// the problem in the Structure's status) when contractor is not up yet.
+func SetupFactory(hostname string, username string, password string, proxy string) error {
+	if hostname == "" {
+		return errors.New("contractor hostname not specified")
 	}
 
-	factory = &clientFactory{username: username, password: password}
-	factory.client = client
-	factory.tokenExpires = time.Now().Add(tokenLifeTime)
+	factory = &clientFactory{hostname: hostname, proxy: proxy, username: username, password: password}
 
 	return nil
 }
 
 // CleanupFactory cleans up the factory, logingout/cleaning up the auth token
 func CleanupFactory(ctx context.Context) {
-	if factory == nil || factory.client == nil {
+	if factory == nil {
+		return
+	}
+
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	if factory.client == nil {
 		return
 	}
 
 	factory.client.Logout(ctx)
 }
 
-// GetClient returns a authencated Contractor client, if the token has expired it is refreshed.
-// An error is returned if the factory is not setup or the login fails, so callers can retry later,
+// GetClient returns a authencated Contractor client, connecting if it has not yet,
+// and refreshing the token if it has expired.
+// An error is returned if the factory is not setup or the connection/login fails, so callers can retry later,
 // the contractor being down for a bit should not take down the controller.
 func GetClient(ctx context.Context) (*contractorClient.Contractor, error) {
-	if factory == nil || factory.client == nil {
+	if factory == nil {
 		return nil, errors.New("contractor client factory not setup")
 	}
 
 	factory.mu.Lock()
 	defer factory.mu.Unlock()
+
+	if factory.client == nil {
+		log := ctrl.Log.WithName("contractor")
+		logger := slog.New(logr.ToSlogHandler(log))
+		client, err := contractorClient.NewContractor(ctx, logger, factory.hostname, factory.proxy,
+			factory.username, factory.password)
+		if err != nil {
+			return nil, fmt.Errorf("unable to connect to contractor at '%s': %w", factory.hostname, err)
+		}
+		factory.client = client
+		factory.tokenExpires = time.Now().Add(tokenLifeTime)
+		return factory.client, nil
+	}
+
 	if time.Now().After(factory.tokenExpires) {
 		factory.client.Logout(ctx)
 		err := factory.client.Login(ctx, factory.username, factory.password)
