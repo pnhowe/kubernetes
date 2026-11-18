@@ -69,8 +69,8 @@ func (s *Structure) ValidateChanges(ctx context.Context, client *client.Contract
 	}
 
 	if s.Spec.BluePrint != old.Spec.BluePrint {
-		if old.Status.State != "planned" || s.Status.State != "planned" ||
-			old.Spec.State != "planned" || s.Spec.State != "planned" {
+		if old.Status.State != StatePlanned || s.Status.State != StatePlanned ||
+			old.Spec.State != StatePlanned || s.Spec.State != StatePlanned {
 			errs = append(errs, errors.New("can not change the BluePrint while not in 'Planned' State"))
 		}
 
@@ -90,8 +90,8 @@ func (s *Structure) ValidateChanges(ctx context.Context, client *client.Contract
 func (s *Structure) CanDelete(ctx context.Context) []error {
 	var errs []error
 
-	if s.Status.State == "built" || s.Spec.State == "built" {
-		errs = append(errs, errors.New("can not delete Structure that is in planned state"))
+	if s.Status.State == StateBuilt || s.Spec.State == StateBuilt {
+		errs = append(errs, errors.New("can not delete Structure that is built or targeted to be built, set the state to planned and wait for the destroy to finish first"))
 	}
 
 	if s.Status.Job != nil {

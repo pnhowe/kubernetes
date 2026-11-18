@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: structure-sample
 spec:
-  id: 3
+  id: 3  # the ID of an existing Structure in contractor, can not be changed after creation
   state: built
   blueprint: test-structure-base
   configValues:

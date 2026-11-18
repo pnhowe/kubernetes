@@ -21,6 +21,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// The states a Structure can be in
+const (
+	StatePlanned = "planned"
+	StateBuilt   = "built"
+)
+
 // StructureSpec defines the desired state of Structure
 type StructureSpec struct {
 	// +kubebuilder:validation:Required
@@ -39,8 +45,6 @@ type StructureSpec struct {
 	// ConsumerRef can be used to store information about something that is using this structure.
 	// +kubebuilder:validation:Optional
 	ConsumerRef *corev1.ObjectReference `json:"consumerRef,omitempty"`
-	//
-	// utility job name, can only be when when state == built and not job
 }
 
 // StructureStatus defines the observed state of the Structure
@@ -54,7 +58,6 @@ type StructureStatus struct {
 	Hostname            string       `json:"hostname,omitempty"`
 	Foundation          string       `json:"foundation,omitempty"`
 	FoundationBluePrint string       `json:"foundationBluePrint,omitempty"`
-	// utility job name, utility job result, clear name and result when utility job name is blanked in the spec, the status will be in job Status - will auto clear when the job is complete, also emit events when job is set, started, finishes, etc
 }
 
 // JobStatus defines the observed state of the Job
@@ -94,8 +97,4 @@ type StructureList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Structure `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&Structure{}, &StructureList{})
 }

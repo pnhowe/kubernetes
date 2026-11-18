@@ -2,10 +2,13 @@ package contractor
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
-	cinp "github.com/cinp/go"
+	cinp "github.com/cinp/go/v2"
 	"github.com/go-logr/logr"
 	contractorClient "github.com/t3kton/contractor_goclient"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -15,6 +18,7 @@ const tokenLifeTime = time.Minute * 10
 
 // clientFactory creates authencated Contractor Clients
 type clientFactory struct {
+	mu           sync.Mutex // the controller and webhooks share the client, and token refresh must not race
 	username     string
 	password     string
 	client       *contractorClient.Contractor
@@ -49,21 +53,26 @@ func CleanupFactory(ctx context.Context) {
 	factory.client.Logout(ctx)
 }
 
-// GetClient returns a authencated Contractor client
-func GetClient(ctx context.Context) *contractorClient.Contractor {
+// GetClient returns a authencated Contractor client, if the token has expired it is refreshed.
+// An error is returned if the factory is not setup or the login fails, so callers can retry later,
+// the contractor being down for a bit should not take down the controller.
+func GetClient(ctx context.Context) (*contractorClient.Contractor, error) {
 	if factory == nil || factory.client == nil {
-		panic("Contractor Client Factory Not Setup")
+		return nil, errors.New("contractor client factory not setup")
 	}
-	if time.Now().Compare(factory.tokenExpires) == 1 {
+
+	factory.mu.Lock()
+	defer factory.mu.Unlock()
+	if time.Now().After(factory.tokenExpires) {
 		factory.client.Logout(ctx)
 		err := factory.client.Login(ctx, factory.username, factory.password)
 		if err != nil {
-			panic("Unable to Authencated to Contractor, creds no longer work")
+			return nil, fmt.Errorf("unable to authenticate to contractor: %w", err)
 		}
 		factory.tokenExpires = time.Now().Add(tokenLifeTime)
 	}
 
-	return factory.client
+	return factory.client, nil
 }
 
 // SetupTestingFactory sets up the factory for testing

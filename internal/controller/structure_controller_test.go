@@ -22,12 +22,12 @@ import (
 	"strconv"
 	"time"
 
-	cinp "github.com/cinp/go"
+	cinp "github.com/cinp/go/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	contractorClient "github.com/t3kton/contractor_goclient"
@@ -59,6 +59,11 @@ func (b *buildingStructureMatcher) Matches(x any) bool {
 func (b *buildingStructureMatcher) String() string {
 	return "with uri " + b.uri
 }
+
+const (
+	scriptCreate  = "Create"
+	scriptDestroy = "Destroy"
+)
 
 func TimeAddr(v time.Time) *time.Time {
 	return &v
@@ -97,9 +102,10 @@ var _ = Describe("Structure Controller", func() {
 			mockCINP = test_contractor.NewMockCInPClient(mockCtrl)
 			Expect(contractor.SetupTestingFactory(ctx, mockCINP)).NotTo(HaveOccurred())
 
-			client := contractor.GetClient(ctx)
+			client, err := contractor.GetClient(ctx)
+			Expect(err).NotTo(HaveOccurred())
 
-			mockStructureState = "planned"
+			mockStructureState = contractorv1.StatePlanned
 
 			mockStructure = client.BuildingStructureNewWithID(42)
 			mockStructure.ID = cinp.IntAddr(42)
@@ -114,11 +120,11 @@ var _ = Describe("Structure Controller", func() {
 			mockFoundation.Blueprint = cinp.StringAddr("/api/v1/BluePrint/FoundationBluePrint:test-foundation-base:")
 
 			mockJobID = 37
-			mockJobScriptName = "Create"
+			mockJobScriptName = scriptCreate
 
 			mockJob = client.ForemanStructureJobNewWithID(mockJobID)
 			mockJob.ID = &mockJobID
-			mockJob.Status = cinp.StringAddr("magic")
+			mockJob.Status = &[]map[string]any{{"percent": 12.5, "operation": "Scope", "parameters": map[string]any{"time_elapsed": "00:02", "time_remaining": "00:07"}}}
 			mockJob.State = cinp.StringAddr("waiting")
 			mockJob.ScriptName = &mockJobScriptName
 			mockJob.Message = cinp.StringAddr("Just doing the thing")
@@ -126,7 +132,6 @@ var _ = Describe("Structure Controller", func() {
 			mockJob.Created = TimeAddr(time.Now())
 			mockJob.Updated = TimeAddr(time.Now())
 
-			var err error
 			uri, err = cinp.NewURI("/api/v1/")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -143,9 +148,8 @@ var _ = Describe("Structure Controller", func() {
 			// testing Update
 			doUpdateStructure = mockCINP.EXPECT().
 				Update(gomock.Any(), BuildingStructureMatcher("/api/v1/Building/Structure:42:")).
-				DoAndReturn(func(_ context.Context, _ *contractorClient.BuildingStructure) (*cinp.Object, error) {
-					result := cinp.Object(mockStructure)
-					return &result, nil
+				DoAndReturn(func(_ context.Context, _ *contractorClient.BuildingStructure) error {
+					return nil
 				})
 
 			// testing Get Foundation
@@ -182,7 +186,7 @@ var _ = Describe("Structure Controller", func() {
 				DoAndReturn(func(_ context.Context, _ string, _ *map[string]interface{}, result *int) error {
 					*result = 37
 					mockJobID = 37
-					mockJobScriptName = "Create"
+					mockJobScriptName = scriptCreate
 					return nil
 				})
 
@@ -192,7 +196,7 @@ var _ = Describe("Structure Controller", func() {
 				DoAndReturn(func(_ context.Context, _ string, _ *map[string]interface{}, result *int) error {
 					*result = 38
 					mockJobID = 38
-					mockJobScriptName = "Destroy"
+					mockJobScriptName = scriptDestroy
 					return nil
 				})
 		})
@@ -206,7 +210,7 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
 			By("Reconciling the before structure is made resource")
@@ -265,7 +269,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "planned",
+					State:     contractorv1.StatePlanned,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -278,7 +282,7 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
 			mockJobID = 0
@@ -299,11 +303,11 @@ var _ = Describe("Structure Controller", func() {
 			By("Reconciling") // this will fill in the status
 			result, err := controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling Again") // should just fall through
@@ -313,7 +317,7 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
 		})
@@ -332,7 +336,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "built",
+					State:     contractorv1.StateBuilt,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -345,10 +349,10 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
-			mockStructure.State = cinp.StringAddr("built")
+			mockStructure.State = cinp.StringAddr(contractorv1.StateBuilt)
 
 			mockJobID = 0
 
@@ -368,11 +372,11 @@ var _ = Describe("Structure Controller", func() {
 			By("Reconciling") // this will fill in the status
 			result, err := controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status After")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling Again") // should just fall through
@@ -382,7 +386,7 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 		})
 
@@ -400,7 +404,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "built",
+					State:     contractorv1.StateBuilt,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -412,7 +416,7 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			structure.Status = contractorv1.StructureStatus{
-				State:               "planned",
+				State:               contractorv1.StatePlanned,
 				BluePrint:           "test-structure-base",
 				Hostname:            "testing",
 				Foundation:          "test",
@@ -423,10 +427,10 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
-			mockStructureState = "planned"
+			mockStructureState = contractorv1.StatePlanned
 			mockJobID = 0
 			mockJobScriptName = ""
 
@@ -440,29 +444,29 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Before")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // should just create job
 			result, err := controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 			Expect(mockJobID).To(Equal(37))
 
 			By("Checking Status Without Job")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // now we get the job status
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With Job")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
-			Expect(structure2.Status.Job.Script).To(Equal("Create"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
 
 			By("Reconciling") // now we get told to requeue in 30 seconds, letting the job run
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -471,31 +475,31 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Waiting for Job")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
-			Expect(structure2.Status.Job.Script).To(Equal("Create"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
 
 			mockJobID = 0
 
 			By("Reconciling") // now the job is done, will update status to remove the job
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status Job is Gone")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
-			mockStructureState = "built"
+			mockStructureState = contractorv1.StateBuilt
 
 			By("Reconciling") // now the status is built and it will be done
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With new State")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // now we should not get any requeuing
@@ -505,7 +509,7 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 		})
 
@@ -523,7 +527,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "planned",
+					State:     contractorv1.StatePlanned,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -535,7 +539,7 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			structure.Status = contractorv1.StructureStatus{
-				State:               "built",
+				State:               contractorv1.StateBuilt,
 				BluePrint:           "test-structure-base",
 				Hostname:            "testing",
 				Foundation:          "test",
@@ -546,10 +550,10 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
-			mockStructureState = "built"
+			mockStructureState = contractorv1.StateBuilt
 			mockJobID = 0
 			mockJobScriptName = ""
 
@@ -563,29 +567,29 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Before")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // should just create job
 			result, err := controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 			Expect(mockJobID).To(Equal(38))
 
 			By("Checking Status Without Job")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // now we get the job status
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With Job")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
-			Expect(structure2.Status.Job.Script).To(Equal("Destroy"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptDestroy))
 
 			By("Reconciling") // now we get told to requeue in 30 seconds, letting the job run
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -594,31 +598,31 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Waiting for Job")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
-			Expect(structure2.Status.Job.Script).To(Equal("Destroy"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptDestroy))
 
 			mockJobID = 0
 
 			By("Reconciling") // now the job is done, will update status to remove the job
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status Job is Gone")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 
-			mockStructureState = "planned"
+			mockStructureState = contractorv1.StatePlanned
 
 			By("Reconciling") // now the status is built and it will be done
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With new State")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // now we should not get any requeuing
@@ -628,7 +632,7 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 		})
 
@@ -646,7 +650,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "built",
+					State:     contractorv1.StateBuilt,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -658,7 +662,7 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			structure.Status = contractorv1.StructureStatus{
-				State:               "planned",
+				State:               contractorv1.StatePlanned,
 				BluePrint:           "test-structure-base",
 				Hostname:            "testing",
 				Foundation:          "test",
@@ -669,10 +673,10 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
-			mockStructureState = "planned"
+			mockStructureState = contractorv1.StatePlanned
 			mockJobID = 37
 
 			doGetStructure.Times(4)
@@ -685,18 +689,18 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Before")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // we should get the job status
 			result, err := controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With Job (Create Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
-			Expect(structure2.Status.Job.Script).To(Equal("Create"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
 
 			By("Reconciling") // now we get told to requeue in 30 seconds, letting the job run
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -705,20 +709,20 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After (Create Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
-			Expect(structure2.Status.Job.Script).To(Equal("Create"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
 
-			mockJobScriptName = "Destroy"
+			mockJobScriptName = scriptDestroy
 
 			By("Reconciling") // should update the job status
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With Job (Destroy Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
-			Expect(structure2.Status.Job.Script).To(Equal("Destroy"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptDestroy))
 
 			By("Reconciling") // now we get told to requeue in 30 seconds, letting the job run
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -727,8 +731,8 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After (Destroy Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
-			Expect(structure2.Status.Job.Script).To(Equal("Destroy"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptDestroy))
 		})
 
 		It("creating the job when going from built to planned, existing jobs", func() {
@@ -745,7 +749,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "planned",
+					State:     contractorv1.StatePlanned,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -757,7 +761,7 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			structure.Status = contractorv1.StructureStatus{
-				State:               "built",
+				State:               contractorv1.StateBuilt,
 				BluePrint:           "test-structure-base",
 				Hostname:            "testing",
 				Foundation:          "test",
@@ -768,12 +772,12 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
-			mockStructureState = "built"
+			mockStructureState = contractorv1.StateBuilt
 			mockJobID = 37
-			mockJobScriptName = "Destroy"
+			mockJobScriptName = scriptDestroy
 
 			doGetStructure.Times(4)
 			doUpdateStructure.Times(0)
@@ -785,18 +789,18 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Before")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
 			Expect(structure2.Status.Job).To(BeNil())
 
 			By("Reconciling") // we should get the job status
 			result, err := controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With Job (Destroy Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
-			Expect(structure2.Status.Job.Script).To(Equal("Destroy"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptDestroy))
 
 			By("Reconciling") // now we get told to requeue in 30 seconds, letting the job run
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -805,20 +809,20 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After (Destroy Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
-			Expect(structure2.Status.Job.Script).To(Equal("Destroy"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptDestroy))
 
-			mockJobScriptName = "Create"
+			mockJobScriptName = scriptCreate
 
 			By("Reconciling") // should update the job status
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status With Job (Create Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
-			Expect(structure2.Status.Job.Script).To(Equal("Create"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
 
 			By("Reconciling") // now we get told to requeue in 30 seconds, letting the job run
 			result, err = controllerReconciler.Reconcile(ctx, req)
@@ -827,8 +831,8 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status After (Create Job)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("built"))
-			Expect(structure2.Status.Job.Script).To(Equal("Create"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StateBuilt))
+			Expect(structure2.Status.Job.Script).To(Equal(scriptCreate))
 		})
 
 		// update blueprint
@@ -847,7 +851,7 @@ var _ = Describe("Structure Controller", func() {
 				},
 				Spec: contractorv1.StructureSpec{
 					ID:        42,
-					State:     "planned",
+					State:     contractorv1.StatePlanned,
 					BluePrint: "test-structure-base",
 				},
 			}
@@ -858,7 +862,7 @@ var _ = Describe("Structure Controller", func() {
 			}()
 
 			structure.Status = contractorv1.StructureStatus{
-				State:               "planned",
+				State:               contractorv1.StatePlanned,
 				BluePrint:           "test-structure-base",
 				Hostname:            "testing",
 				Foundation:          "test",
@@ -869,10 +873,10 @@ var _ = Describe("Structure Controller", func() {
 			controllerReconciler := &StructureReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: &record.FakeRecorder{},
+				Recorder: &events.FakeRecorder{},
 			}
 
-			mockStructureState = "planned"
+			mockStructureState = contractorv1.StatePlanned
 			mockJobID = 0
 
 			doGetStructure.Times(2)
@@ -885,7 +889,7 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Before")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 			Expect(structure2.Spec.ConfigValues).To(BeNil())
 
@@ -896,7 +900,7 @@ var _ = Describe("Structure Controller", func() {
 
 			By("Checking Status Before Setting Values")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 			Expect(structure2.Spec.ConfigValues).To(BeNil())
 
@@ -909,13 +913,151 @@ var _ = Describe("Structure Controller", func() {
 			By("Reconciling") // update config values
 			result, err = controllerReconciler.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(Equal(true))
+			Expect(result.RequeueAfter).To(Equal(requeueSoon))
 
 			By("Checking Status After Setting Values")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
-			Expect(structure2.Status.State).To(Equal("planned"))
+			Expect(structure2.Status.State).To(Equal(contractorv1.StatePlanned))
 			Expect(structure2.Status.Job).To(BeNil())
 			Expect(structure2.Spec.ConfigValues).ToNot(BeNil())
+		})
+		It("follow mode updates the spec from contractor and never changes contractor", func() {
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			structure := &contractorv1.Structure{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: namespaceName},
+				Spec: contractorv1.StructureSpec{
+					ID:           42,
+					State:        contractorv1.StateBuilt,
+					BluePrint:    "some-other-blueprint",
+					ConfigValues: contractorv1.ConfigValues{"mine": contractorv1.NewConfigValue("gone")},
+				},
+			}
+			Expect(k8sClient.Create(ctx, structure)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, structure)).To(Succeed())
+			}()
+
+			mockStructureState = contractorv1.StatePlanned
+			mockJobID = 0
+			mockStructure.ConfigValues = &map[string]interface{}{"fromcontractor": 7.0}
+
+			doGetStructure.AnyTimes()
+			doGetFoudation.AnyTimes()
+			doFindJob.AnyTimes()
+			doGetJob.AnyTimes()
+			doUpdateStructure.Times(0)
+			doCreateCall.Times(0)
+			doDestroyCall.Times(0)
+
+			controllerReconciler := &StructureReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				Recorder:       &events.FakeRecorder{},
+				SyncMode:       SyncModeFollow,
+				ResyncInterval: 5 * time.Minute,
+			}
+
+			var result reconcile.Result
+			var err error
+			for i := 0; i < 10; i++ { // status, then state, then blueprint+config, each requeues
+				result, err = controllerReconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+				if result.RequeueAfter != requeueSoon {
+					break
+				}
+			}
+			Expect(result.RequeueAfter).To(Equal(5 * time.Minute))
+
+			var structure2 contractorv1.Structure
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &structure2)).NotTo(HaveOccurred())
+			Expect(structure2.Spec.State).To(Equal(contractorv1.StatePlanned))
+			Expect(structure2.Spec.BluePrint).To(Equal("test-structure-base"))
+			Expect(structure2.Spec.ConfigValues).To(HaveLen(1))
+			Expect(structure2.Spec.ConfigValues).To(HaveKey("fromcontractor"))
+		})
+
+		It("destroys a built structure when the blueprint changes, instead of trying to create it", func() {
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			structure := &contractorv1.Structure{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: namespaceName},
+				Spec: contractorv1.StructureSpec{
+					ID:           42,
+					State:        contractorv1.StateBuilt,
+					BluePrint:    "some-other-blueprint",
+					ConfigValues: contractorv1.ConfigValues{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, structure)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, structure)).To(Succeed())
+			}()
+
+			mockStructureState = contractorv1.StateBuilt
+			mockJobID = 0
+
+			doGetStructure.AnyTimes()
+			doGetFoudation.AnyTimes()
+			doFindJob.AnyTimes()
+			doGetJob.AnyTimes()
+			doUpdateStructure.Times(0)
+			doCreateCall.Times(0)
+			doDestroyCall.Times(1)
+
+			controllerReconciler := &StructureReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: &events.FakeRecorder{},
+			}
+
+			for i := 0; i < 3 && mockJobID == 0; i++ { // first one fills in the status
+				_, err := controllerReconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			Expect(mockJobID).To(Equal(38))
+		})
+
+		It("schedules the next resync when idle", func() {
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			structure := &contractorv1.Structure{
+				ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: namespaceName},
+				Spec: contractorv1.StructureSpec{
+					ID:           42,
+					State:        contractorv1.StatePlanned,
+					BluePrint:    "test-structure-base",
+					ConfigValues: contractorv1.ConfigValues{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, structure)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, structure)).To(Succeed())
+			}()
+
+			mockJobID = 0
+			doGetStructure.AnyTimes()
+			doGetFoudation.AnyTimes()
+			doFindJob.AnyTimes()
+			doGetJob.AnyTimes()
+			doUpdateStructure.Times(0)
+			doCreateCall.Times(0)
+			doDestroyCall.Times(0)
+
+			controllerReconciler := &StructureReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				Recorder:       &events.FakeRecorder{},
+				ResyncInterval: 5 * time.Minute,
+			}
+
+			var result reconcile.Result
+			var err error
+			for i := 0; i < 5; i++ {
+				result, err = controllerReconciler.Reconcile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+				if result.RequeueAfter != requeueSoon {
+					break
+				}
+			}
+			Expect(result.RequeueAfter).To(Equal(5 * time.Minute))
 		})
 	})
 })

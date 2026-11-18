@@ -6,6 +6,7 @@ metadata:
 rules:
 - apiGroups:
   - ""
+  - events.k8s.io
   resources:
   - events
   verbs:
@@ -23,12 +24,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - contractor.t3kton.com
-  resources:
-  - structures/finalizers
-  verbs:
-  - update
 - apiGroups:
   - contractor.t3kton.com
   resources:

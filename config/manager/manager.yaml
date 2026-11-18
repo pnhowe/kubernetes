@@ -64,9 +64,26 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-          - -contractor-host=http://172.19.0.1:8888
-          - -contractor-username=root
-          - -contractor-password=root
+          # - --sync-mode=follow  # make contractor the source of truth, default is enforce, see the README
+          # - --resync-interval=5m
+        # The connection information comes from a Secret that is created by hand, see the README.
+        # The Secret is not part of the kustomization, so the name is not prefixed.
+        env:
+          - name: CONTRACTOR_HOST
+            valueFrom:
+              secretKeyRef:
+                name: contractor-credentials
+                key: host
+          - name: CONTRACTOR_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: contractor-credentials
+                key: username
+          - name: CONTRACTOR_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: contractor-credentials
+                key: password
         image: controller:latest
         name: manager
         ports: []

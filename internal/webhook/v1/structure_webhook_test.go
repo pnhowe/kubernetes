@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"time"
 
-	cinp "github.com/cinp/go"
+	cinp "github.com/cinp/go/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	contractorClient "github.com/t3kton/contractor_goclient"
@@ -61,9 +61,10 @@ var _ = Describe("Structure Webhook", func() {
 		mockCINP = test_contractor.NewMockCInPClient(mockCtrl)
 		Expect(contractor.SetupTestingFactory(ctx, mockCINP)).NotTo(HaveOccurred())
 
-		client := contractor.GetClient(ctx)
+		client, err := contractor.GetClient(ctx)
+		Expect(err).NotTo(HaveOccurred())
 
-		mockStructureState = "planned"
+		mockStructureState = contractorv1.StatePlanned
 
 		mockStructure = client.BuildingStructureNewWithID(123)
 		mockStructure.ID = cinp.IntAddr(123)
@@ -82,7 +83,7 @@ var _ = Describe("Structure Webhook", func() {
 
 		mockJob = client.ForemanStructureJobNewWithID(mockJobID)
 		mockJob.ID = &mockJobID
-		mockJob.Status = cinp.StringAddr("magic")
+		mockJob.Status = &[]map[string]any{{"percent": 12.5, "operation": "Scope", "parameters": map[string]any{"time_elapsed": "00:02", "time_remaining": "00:07"}}}
 		mockJob.State = cinp.StringAddr("waiting")
 		mockJob.ScriptName = &mockJobScriptName
 		mockJob.Message = cinp.StringAddr("Just doing the thing")
@@ -93,7 +94,6 @@ var _ = Describe("Structure Webhook", func() {
 		mockStructureBluePrint = client.BlueprintStructureBluePrintNewWithID("test-structure-base")
 		mockStructureBluePrint.Name = cinp.StringAddr("test-structure-base")
 
-		var err error
 		uri, err = cinp.NewURI("/api/v1/")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -248,7 +248,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.ConfigValues["a"]).To(Equal(contractorv1.NewConfigValue("asdf")))
 			Expect(structure.Spec.ConfigValues["b"]).To(Equal(contractorv1.NewConfigValue(12)))
 			Expect(structure.Spec.ConfigValues["c"]).To(Equal(contractorv1.NewConfigValue(2.1)))
-			Expect(structure.Spec.State).To(Equal("planned"))
+			Expect(structure.Spec.State).To(Equal(contractorv1.StatePlanned))
 		})
 
 		It("Should fall through if state, blueprint, configValues are set", func() {
@@ -256,7 +256,7 @@ var _ = Describe("Structure Webhook", func() {
 			structure := &contractorv1.Structure{
 				Spec: contractorv1.StructureSpec{
 					ID:           123,
-					State:        "built",
+					State:        contractorv1.StateBuilt,
 					BluePrint:    "structure-non-base",
 					ConfigValues: map[string]contractorv1.ConfigValue{"2": contractorv1.NewConfigValue("Bob")},
 				},
@@ -275,7 +275,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.BluePrint).To(Equal("structure-non-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
 			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.NewConfigValue("Bob")))
-			Expect(structure.Spec.State).To(Equal("built"))
+			Expect(structure.Spec.State).To(Equal(contractorv1.StateBuilt))
 
 			By("Call Default")
 			Expect(defaulter.Default(ctx, structure)).Should(Succeed())
@@ -285,7 +285,7 @@ var _ = Describe("Structure Webhook", func() {
 			Expect(structure.Spec.BluePrint).To(Equal("structure-non-base"))
 			Expect(structure.Spec.ConfigValues).To(HaveLen(1))
 			Expect(structure.Spec.ConfigValues["2"]).To(Equal(contractorv1.NewConfigValue("Bob")))
-			Expect(structure.Spec.State).To(Equal("built"))
+			Expect(structure.Spec.State).To(Equal(contractorv1.StateBuilt))
 
 		})
 	})
@@ -583,7 +583,7 @@ var _ = Describe("Structure Webhook", func() {
 				BluePrint: "old-test-structure-base",
 			},
 			Status: contractorv1.StructureStatus{
-				State: "planned",
+				State: contractorv1.StatePlanned,
 			},
 		}
 		structure := &contractorv1.Structure{
@@ -592,7 +592,7 @@ var _ = Describe("Structure Webhook", func() {
 				BluePrint: "test-structure-base",
 			},
 			Status: contractorv1.StructureStatus{
-				State: "planned",
+				State: contractorv1.StatePlanned,
 			},
 		}
 
@@ -617,8 +617,8 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting new Spec State to planned")
-		structure.Spec.State = "planned"
-		oldStructure.Spec.State = "built"
+		structure.Spec.State = contractorv1.StatePlanned
+		oldStructure.Spec.State = contractorv1.StateBuilt
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -627,8 +627,8 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting old Spec State to planned")
-		structure.Spec.State = "built"
-		oldStructure.Spec.State = "planned"
+		structure.Spec.State = contractorv1.StateBuilt
+		oldStructure.Spec.State = contractorv1.StatePlanned
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -637,8 +637,8 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting both Spec State to planned")
-		structure.Spec.State = "planned"
-		oldStructure.Spec.State = "planned"
+		structure.Spec.State = contractorv1.StatePlanned
+		oldStructure.Spec.State = contractorv1.StatePlanned
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -646,8 +646,8 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err).To(BeNil())
 
 		By("Setting both Spec State to built")
-		structure.Spec.State = "built"
-		oldStructure.Spec.State = "built"
+		structure.Spec.State = contractorv1.StateBuilt
+		oldStructure.Spec.State = contractorv1.StateBuilt
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -656,10 +656,10 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting old Status State to built")
-		structure.Spec.State = "planned"
-		structure.Status.State = "planned"
-		oldStructure.Spec.State = "planned"
-		oldStructure.Status.State = "built"
+		structure.Spec.State = contractorv1.StatePlanned
+		structure.Status.State = contractorv1.StatePlanned
+		oldStructure.Spec.State = contractorv1.StatePlanned
+		oldStructure.Status.State = contractorv1.StateBuilt
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -668,10 +668,10 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting new Status State to built")
-		structure.Spec.State = "planned"
-		structure.Status.State = "built"
-		oldStructure.Spec.State = "planned"
-		oldStructure.Status.State = "planned"
+		structure.Spec.State = contractorv1.StatePlanned
+		structure.Status.State = contractorv1.StateBuilt
+		oldStructure.Spec.State = contractorv1.StatePlanned
+		oldStructure.Status.State = contractorv1.StatePlanned
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -680,10 +680,10 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting both Status State to built")
-		structure.Spec.State = "planned"
-		structure.Status.State = "built"
-		oldStructure.Spec.State = "planned"
-		oldStructure.Status.State = "built"
+		structure.Spec.State = contractorv1.StatePlanned
+		structure.Status.State = contractorv1.StateBuilt
+		oldStructure.Spec.State = contractorv1.StatePlanned
+		oldStructure.Status.State = contractorv1.StateBuilt
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -692,10 +692,10 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the BluePrint while not in 'Planned' State"))
 
 		By("Setting both Status State to planned")
-		structure.Spec.State = "planned"
-		structure.Status.State = "planned"
-		oldStructure.Spec.State = "planned"
-		oldStructure.Status.State = "planned"
+		structure.Spec.State = contractorv1.StatePlanned
+		structure.Status.State = contractorv1.StatePlanned
+		oldStructure.Spec.State = contractorv1.StatePlanned
+		oldStructure.Status.State = contractorv1.StatePlanned
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -706,7 +706,7 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.ID).To(Equal(123))
 		Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 		Expect(structure.Spec.ConfigValues).To(HaveLen(0))
-		Expect(structure.Spec.State).To(Equal("planned"))
+		Expect(structure.Spec.State).To(Equal(contractorv1.StatePlanned))
 	})
 
 	It("Can only change blueprint when there is no job", func() {
@@ -715,20 +715,20 @@ var _ = Describe("Structure Webhook", func() {
 			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "old-test-structure-base",
-				State:     "planned",
+				State:     contractorv1.StatePlanned,
 			},
 			Status: contractorv1.StructureStatus{
-				State: "planned",
+				State: contractorv1.StatePlanned,
 			},
 		}
 		structure := &contractorv1.Structure{
 			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
-				State:     "planned",
+				State:     contractorv1.StatePlanned,
 			},
 			Status: contractorv1.StructureStatus{
-				State: "planned",
+				State: contractorv1.StatePlanned,
 			},
 		}
 
@@ -744,7 +744,7 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.ID).To(Equal(123))
 		Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 		Expect(structure.Spec.ConfigValues).To(HaveLen(0))
-		Expect(structure.Spec.State).To(Equal("planned"))
+		Expect(structure.Spec.State).To(Equal(contractorv1.StatePlanned))
 
 		By("Call ValidateUpdate")
 		warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -780,7 +780,7 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.ID).To(Equal(123))
 		Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 		Expect(structure.Spec.ConfigValues).To(HaveLen(0))
-		Expect(structure.Spec.State).To(Equal("planned"))
+		Expect(structure.Spec.State).To(Equal(contractorv1.StatePlanned))
 	})
 
 	It("Can only change requested state when there is no job", func() {
@@ -789,20 +789,20 @@ var _ = Describe("Structure Webhook", func() {
 			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
-				State:     "planned",
+				State:     contractorv1.StatePlanned,
 			},
 			Status: contractorv1.StructureStatus{
-				State: "planned",
+				State: contractorv1.StatePlanned,
 			},
 		}
 		structure := &contractorv1.Structure{
 			Spec: contractorv1.StructureSpec{
 				ID:        123,
 				BluePrint: "test-structure-base",
-				State:     "built",
+				State:     contractorv1.StateBuilt,
 			},
 			Status: contractorv1.StructureStatus{
-				State: "planned",
+				State: contractorv1.StatePlanned,
 			},
 		}
 
@@ -818,7 +818,7 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.ID).To(Equal(123))
 		Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 		Expect(structure.Spec.ConfigValues).To(HaveLen(0))
-		Expect(structure.Spec.State).To(Equal("built"))
+		Expect(structure.Spec.State).To(Equal(contractorv1.StateBuilt))
 
 		By("Call ValidateUpdate")
 		warn, err := validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -851,8 +851,8 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(err.Error()).To(Equal("can not change the State while there is a Job"))
 
 		// The Status State should not be affected buy the job
-		structure.Spec.State = "planned"
-		structure.Status.State = "built"
+		structure.Spec.State = contractorv1.StatePlanned
+		structure.Status.State = contractorv1.StateBuilt
 
 		By("Call ValidateUpdate")
 		warn, err = validator.ValidateUpdate(ctx, oldStructure, structure)
@@ -885,7 +885,7 @@ var _ = Describe("Structure Webhook", func() {
 		Expect(structure.Spec.ID).To(Equal(123))
 		Expect(structure.Spec.BluePrint).To(Equal("test-structure-base"))
 		Expect(structure.Spec.ConfigValues).To(HaveLen(0))
-		Expect(structure.Spec.State).To(Equal("planned"))
+		Expect(structure.Spec.State).To(Equal(contractorv1.StatePlanned))
 	})
 
 	Context("When deleting strusture", func() {

@@ -21,11 +21,9 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	contractorv1 "t3kton.com/api/v1"
@@ -45,7 +43,7 @@ var structurelog = logf.Log.WithName("structure-resource")
 
 // SetupStructureWebhookWithManager registers the webhook for Structure in the manager.
 func SetupStructureWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&contractorv1.Structure{}).
+	return ctrl.NewWebhookManagedBy(mgr, &contractorv1.Structure{}).
 		WithValidator(&StructureCustomValidator{}).
 		WithDefaulter(&StructureCustomDefaulter{}).
 		Complete()
@@ -58,15 +56,11 @@ func SetupStructureWebhookWithManager(mgr ctrl.Manager) error {
 type StructureCustomDefaulter struct {
 }
 
-var _ webhook.CustomDefaulter = &StructureCustomDefaulter{}
+var _ admission.Defaulter[*contractorv1.Structure] = &StructureCustomDefaulter{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Structure.
+// Default implements admission.Defaulter so a webhook will be registered for the Kind Structure.
 // We will copy the State, BluePrint, and ConfigValues from contractor if they are blank
-func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	structure, ok := obj.(*contractorv1.Structure)
-	if !ok {
-		return fmt.Errorf("expected an Structure object but got %T", obj)
-	}
+func (d *StructureCustomDefaulter) Default(ctx context.Context, structure *contractorv1.Structure) error {
 	structurelog.Info("Defaulting for Structure", "name", structure.GetName())
 
 	if structure.Spec.ID == 0 {
@@ -78,7 +72,10 @@ func (d *StructureCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		return nil
 	}
 
-	client := contractor.GetClient(ctx)
+	client, err := contractor.GetClient(ctx)
+	if err != nil {
+		return err
+	}
 
 	structurelog.Info("Getting Structure")
 	upstreamStructure, err := client.BuildingStructureGet(ctx, structure.Spec.ID)
@@ -116,43 +113,32 @@ type StructureCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &StructureCustomValidator{}
+var _ admission.Validator[*contractorv1.Structure] = &StructureCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Structure.
-func (v *StructureCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	structure, ok := obj.(*contractorv1.Structure)
-	if !ok {
-		return nil, fmt.Errorf("expected a Structure object but got %T", obj)
-	}
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type Structure.
+func (v *StructureCustomValidator) ValidateCreate(ctx context.Context, structure *contractorv1.Structure) (admission.Warnings, error) {
 	structurelog.Info("Validation for Structure upon creation", "name", structure.GetName())
 
-	client := contractor.GetClient(ctx)
+	client, err := contractor.GetClient(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return nil, apierrors.NewAggregate(structure.ValidateStructure(ctx, client))
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Structure.
-func (v *StructureCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	newStructure, ok := newObj.(*contractorv1.Structure)
-	if !ok {
-		return nil, fmt.Errorf("expected a Structure object for the newObj but got %T", newObj)
-	}
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type Structure.
+func (v *StructureCustomValidator) ValidateUpdate(ctx context.Context, oldStructure, newStructure *contractorv1.Structure) (admission.Warnings, error) {
 	structurelog.Info("Validation for Structure upon update", "name", newStructure.GetName())
 
-	oldStructure, ok := oldObj.(*contractorv1.Structure)
-	if !ok {
-		return nil, fmt.Errorf("expected a Structure object for the oldObj but got %T", oldObj)
+	client, err := contractor.GetClient(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	client := contractor.GetClient(ctx)
 	return nil, apierrors.NewAggregate(newStructure.ValidateChanges(ctx, client, oldStructure))
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Structure.
-func (v *StructureCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	structure, ok := obj.(*contractorv1.Structure)
-	if !ok {
-		return nil, fmt.Errorf("expected a Structure object but got %T", obj)
-	}
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type Structure.
+func (v *StructureCustomValidator) ValidateDelete(ctx context.Context, structure *contractorv1.Structure) (admission.Warnings, error) {
 	structurelog.Info("Validation for Structure upon deletion", "name", structure.GetName())
 
 	return nil, apierrors.NewAggregate(structure.CanDelete(ctx))

@@ -22,6 +22,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -57,6 +58,13 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+func envOrDefault(name string, defaultValue string) string {
+	if value, ok := os.LookupEnv(name); ok {
+		return value
+	}
+	return defaultValue
+}
+
 // nolint:gocyclo
 func main() {
 	var metricsAddr string
@@ -70,6 +78,8 @@ func main() {
 	var contractorProxy string
 	var contractorUsername string
 	var contractorPassword string
+	var syncModeValue string
+	var resyncInterval time.Duration
 
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -89,10 +99,27 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&contractorHost, "contractor-host", "http://contractor", "Contractor's hostname.")
-	flag.StringVar(&contractorProxy, "contractor-proxy", "", "Proxy to go through to get to the contractor host.")
-	flag.StringVar(&contractorUsername, "contractor-username", "k8s", "Contractor Username.")
-	flag.StringVar(&contractorPassword, "contractor-password", "k8s", "Contractor Password.")
+	// The contractor connection settings can come from the environment (ie: from a Secret) so the
+	// password does not have to be on the command line, the flags override the environment.
+	flag.StringVar(&contractorHost, "contractor-host",
+		envOrDefault("CONTRACTOR_HOST", "http://contractor"),
+		"Contractor's hostname, env: CONTRACTOR_HOST.")
+	flag.StringVar(&contractorProxy, "contractor-proxy",
+		envOrDefault("CONTRACTOR_PROXY", ""),
+		"Proxy to go through to get to the contractor host, env: CONTRACTOR_PROXY.")
+	flag.StringVar(&contractorUsername, "contractor-username",
+		envOrDefault("CONTRACTOR_USERNAME", "k8s"),
+		"Contractor Username, env: CONTRACTOR_USERNAME.")
+	flag.StringVar(&contractorPassword, "contractor-password",
+		envOrDefault("CONTRACTOR_PASSWORD", "k8s"),
+		"Contractor Password, env: CONTRACTOR_PASSWORD.")
+	flag.StringVar(&syncModeValue, "sync-mode", envOrDefault("SYNC_MODE", string(controller.SyncModeEnforce)),
+		"Which side is the source of truth. 'enforce': the Structure resources are, contractor is changed to match them. "+
+			"'follow': contractor is, the Structure resources are changed to match it, "+
+			"and nothing is changed in contractor. env: SYNC_MODE.")
+	flag.DurationVar(&resyncInterval, "resync-interval", 5*time.Minute,
+		"How often an idle Structure is checked against contractor again, "+
+			"to notice changes made directly in contractor. 0 disables.")
 
 	opts := zap.Options{
 		Development: true,
@@ -101,6 +128,13 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	syncMode, err := controller.ParseSyncMode(syncModeValue)
+	if err != nil {
+		setupLog.Error(err, "invalid --sync-mode")
+		os.Exit(1)
+	}
+	setupLog.Info("sync mode", "mode", syncMode, "resync-interval", resyncInterval)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -143,7 +177,7 @@ func main() {
 	}
 
 	ctx := context.TODO()
-	err := contractor.SetupFactory(ctx, contractorHost, contractorUsername, contractorPassword, contractorProxy)
+	err = contractor.SetupFactory(ctx, contractorHost, contractorUsername, contractorPassword, contractorProxy)
 	if err != nil {
 		setupLog.Error(err, "unable to connect to contractor")
 		os.Exit(1)
@@ -223,9 +257,11 @@ func main() {
 	}
 
 	if err = (&controller.StructureReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("structure-controller"),
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Recorder:       mgr.GetEventRecorder("structure-controller"),
+		SyncMode:       syncMode,
+		ResyncInterval: resyncInterval,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Structure")
 		os.Exit(1)
